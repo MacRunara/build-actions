@@ -1,0 +1,121 @@
+# GitHub Action: Macrunara React Native Build
+# =============================================================================
+# 在 Macrunara Mac CI 集群上执行 React Native 构建链路：
+# npm|yarn 安装依赖 → pod install → jest（可关）→ xcodebuild 模拟器构建
+# （可选 → gradlew Android 构建）。
+# 节点镜像（macos-mobile v1.2+）已预装 Node 20 + yarn + CocoaPods +
+# JDK 17 + Android SDK；node-version 留空即用预装 Node 20。
+#
+# 使用方式：
+#   - uses: macrunara/build-actions/react-native@v1
+#     with:
+#       package-manager: npm
+#       ios-workspace: ios/MyApp.xcworkspace
+#       ios-scheme: MyApp
+# =============================================================================
+
+name: 'Macrunara React Native Build'
+description: 'React Native install / pod / jest / xcodebuild|gradlew on a Macrunara Mac runner'
+author: 'Macrunara'
+
+branding:
+  icon: 'atom'
+  color: 'purple'
+
+inputs:
+  package-manager:
+    description: 'JS package manager: npm | yarn'
+    required: false
+    default: 'npm'
+
+  ios-workspace:
+    description: 'iOS workspace path (e.g., ios/MyApp.xcworkspace); empty = skip iOS build'
+    required: false
+    default: ''
+
+  ios-scheme:
+    description: 'iOS scheme name; required when ios-workspace is set'
+    required: false
+    default: ''
+
+  android-task:
+    description: 'Gradle task for Android build (e.g., assembleDebug); empty = skip Android build'
+    required: false
+    default: ''
+
+  node-version:
+    description: 'Node version to install via setup-node (empty = use preinstalled Node 20)'
+    required: false
+    default: ''
+
+  run-tests:
+    description: 'Run JS tests (jest) before building (true/false)'
+    required: false
+    default: 'true'
+
+  upload_artifact:
+    description: 'Whether to upload build artifacts (true/false)'
+    required: false
+    default: 'false'
+
+  artifact_name:
+    description: 'Name of the uploaded artifact'
+    required: false
+    default: 'rn-build-products'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Show Action Info
+      shell: bash
+      run: |
+        echo "::group::Macrunara React Native Build"
+        echo "package-manager: ${{ inputs.package-manager }}"
+        echo "ios-workspace:   ${{ inputs.ios-workspace }}"
+        echo "ios-scheme:      ${{ inputs.ios-scheme }}"
+        echo "android-task:    ${{ inputs.android-task }}"
+        echo "node-version:    ${{ inputs.node-version }} (empty = preinstalled Node 20)"
+        echo "run-tests:       ${{ inputs.run-tests }}"
+        echo "::endgroup::"
+
+    # 预装环境导出：Node 在 /usr/local/bin；CocoaPods 在系统 gem bin 目录
+    # （/Library/Ruby/Gems/*/bin 等，随镜像 ruby 版本而定）——全部写入
+    # $GITHUB_PATH，保证 job 内后续 step（非登录 shell）直接可用。
+    - name: Export preinstalled environment
+      shell: bash
+      run: |
+        [ -d /usr/local/bin ] && echo "/usr/local/bin" >> "$GITHUB_PATH"
+        for d in /Library/Ruby/Gems/*/bin /usr/local/lib/ruby/gems/*/bin "$HOME/.gem/ruby"/*/bin; do
+          [ -d "$d" ] && echo "$d" >> "$GITHUB_PATH"
+        done
+        export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+        echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+        echo "node: $(/usr/local/bin/node --version 2>/dev/null || echo 'not in /usr/local/bin')"
+        echo "pod:  $(command -v pod >/dev/null 2>&1 && pod --version || echo 'see gem bin dirs above')"
+
+    # 可选：锁定 Node 版本（默认不需要，节点已预装 Node 20 LTS）
+    - name: Setup Node (only when node-version is set)
+      if: ${{ inputs.node-version != '' }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: React Native build pipeline
+      shell: bash
+      run: |
+        bash "${{ github.action_path }}/scripts/build.sh" \
+          "${{ inputs.package-manager }}" \
+          "${{ inputs.ios-workspace }}" \
+          "${{ inputs.ios-scheme }}" \
+          "${{ inputs.android-task }}" \
+          "${{ inputs.run-tests }}"
+
+    - name: Upload artifact
+      if: ${{ inputs.upload_artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: |
+          build/DerivedData/Build/Products/Debug-iphonesimulator/
+          android/app/build/outputs/apk/
+        if-no-files-found: warn

@@ -1,0 +1,96 @@
+# GitHub Action: Macrunara iOS Build
+# =============================================================================
+# 在 Macrunara Mac CI 集群上执行 Xcode 构建、归档导出与产物上传。
+# 自 macrunara/local-mac-runner-action 迁入（inputs 与行为完全一致）。
+#
+# 使用方式：
+#   - uses: macrunara/build-actions/ios@v1
+#     with:
+#       scheme: MyApp
+#       project: MyApp.xcodeproj
+#       configuration: Release
+#       sdk: iphoneos
+#       upload_artifact: true
+# =============================================================================
+
+name: 'Macrunara iOS Build'
+description: 'Build and export an Xcode project on a Macrunara Mac runner'
+author: 'Macrunara'
+
+branding:
+  icon: 'command'
+  color: 'blue'
+
+inputs:
+  scheme:
+    description: 'Xcode scheme to build'
+    required: true
+
+  project:
+    description: 'Xcode project or workspace path (optional)'
+    required: false
+
+  configuration:
+    description: 'Build configuration (e.g., Release, Debug)'
+    required: false
+    default: 'Release'
+
+  sdk:
+    description: 'SDK to build against (e.g., iphoneos, macosx)'
+    required: false
+    default: 'iphoneos'
+
+  upload_artifact:
+    description: 'Whether to upload the artifact path (true/false)'
+    required: false
+    default: 'false'
+
+  artifact_name:
+    description: 'Name of the uploaded artifact'
+    required: false
+    default: 'build-products'
+
+  artifact_path:
+    description: 'Path to the artifact directory to upload'
+    required: false
+    default: 'build/Release-iphoneos'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Show Action Info
+      shell: bash
+      run: |
+        echo "::group::Macrunara iOS Build"
+        echo "scheme:        ${{ inputs.scheme }}"
+        echo "project:       ${{ inputs.project }}"
+        echo "configuration: ${{ inputs.configuration }}"
+        echo "sdk:           ${{ inputs.sdk }}"
+        echo "upload_artifact: ${{ inputs.upload_artifact }}"
+        echo "artifact_path: ${{ inputs.artifact_path }}"
+        echo "::endgroup::"
+
+    # 构建逻辑在 scripts/build.sh，便于本地单测（见 tests/run_tests.sh）。
+    # 用 bash 显式调用可规避脚本 +x 权限在 git 中丢失的问题。
+    - name: Build Xcode project
+      shell: bash
+      run: |
+        bash "${{ github.action_path }}/scripts/build.sh" \
+          "${{ inputs.scheme }}" \
+          "${{ inputs.project }}" \
+          "${{ inputs.configuration }}" \
+          "${{ inputs.sdk }}"
+
+    # 无 .xcarchive 时跳过；导出失败仅输出 warning，不中断 workflow。
+    - name: Export archive if present
+      shell: bash
+      run: |
+        bash "${{ github.action_path }}/scripts/export-archive.sh"
+
+    - name: Upload artifact
+      if: ${{ inputs.upload_artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: ${{ inputs.artifact_path }}
+        if-no-files-found: warn

@@ -1,0 +1,104 @@
+# GitHub Action: Macrunara Flutter Build
+# =============================================================================
+# 在 Macrunara Mac CI 集群上执行 Flutter 构建链路：
+# pub get → analyze → test（可关）→ build ipa（无签名）/ build apk。
+# 节点镜像（macos-mobile v1.2+）已预装 Flutter stable（~/flutter），
+# 本 action 默认使用预装版；仅在 flutter-version 显式给值时才调 flutter-action 切换。
+#
+# 使用方式：
+#   - uses: macrunara/build-actions/flutter@v1
+#     with:
+#       platform: all        # ios | android | all
+#       build-mode: release  # debug | release
+# =============================================================================
+
+name: 'Macrunara Flutter Build'
+description: 'Flutter pub get / analyze / test / build ipa|apk on a Macrunara Mac runner'
+author: 'Macrunara'
+
+branding:
+  icon: 'wind'
+  color: 'blue'
+
+inputs:
+  platform:
+    description: 'Build target: ios | android | all'
+    required: false
+    default: 'all'
+
+  flutter-version:
+    description: 'Flutter version to install via flutter-action (empty = use preinstalled stable)'
+    required: false
+    default: ''
+
+  build-mode:
+    description: 'Build mode: debug | release'
+    required: false
+    default: 'debug'
+
+  run-tests:
+    description: 'Run flutter analyze + test before building (true/false)'
+    required: false
+    default: 'true'
+
+  upload_artifact:
+    description: 'Whether to upload build artifacts (true/false)'
+    required: false
+    default: 'false'
+
+  artifact_name:
+    description: 'Name of the uploaded artifact'
+    required: false
+    default: 'flutter-build-products'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Show Action Info
+      shell: bash
+      run: |
+        echo "::group::Macrunara Flutter Build"
+        echo "platform:        ${{ inputs.platform }}"
+        echo "flutter-version: ${{ inputs.flutter-version }} (empty = preinstalled)"
+        echo "build-mode:      ${{ inputs.build-mode }}"
+        echo "run-tests:       ${{ inputs.run-tests }}"
+        echo "::endgroup::"
+
+    # 预装 Flutter 在 ~/flutter/bin，非登录 shell 默认 PATH 不含它——
+    # 写入 $GITHUB_PATH，保证本 action 之后 job 内的所有 step 都能直接调 flutter。
+    - name: Export preinstalled Flutter PATH
+      shell: bash
+      run: |
+        if [ -x "$HOME/flutter/bin/flutter" ]; then
+          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+          git config --global --add safe.directory "$HOME/flutter" 2>/dev/null || true
+          echo "preinstalled flutter: $("$HOME/flutter/bin/flutter" --version 2>/dev/null | head -1)"
+        else
+          echo "::notice::preinstalled flutter not found at ~/flutter; rely on flutter-action or job-level setup"
+        fi
+
+    # 可选：锁定 Flutter 版本（默认不需要，节点已预装 stable）
+    - name: Setup Flutter (only when flutter-version is set)
+      if: ${{ inputs.flutter-version != '' }}
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ inputs.flutter-version }}
+        channel: stable
+
+    - name: Flutter build pipeline
+      shell: bash
+      run: |
+        bash "${{ github.action_path }}/scripts/build.sh" \
+          "${{ inputs.platform }}" \
+          "${{ inputs.build-mode }}" \
+          "${{ inputs.run-tests }}"
+
+    - name: Upload artifact
+      if: ${{ inputs.upload_artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: |
+          build/ios/ipa/
+          build/app/outputs/flutter-apk/
+        if-no-files-found: warn

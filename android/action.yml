@@ -1,0 +1,105 @@
+# GitHub Action: Macrunara Android Build
+# =============================================================================
+# 在 Macrunara Mac CI 集群上执行 Android Gradle 构建与产物上传。
+# 节点镜像（macos-mobile v1.2+）已预装 JDK 17 / Android SDK（API 35 + NDK 27），
+# 本 action 默认直接使用预装环境；仅在 java-version 显式给值时才调 setup-java。
+#
+# 使用方式：
+#   - uses: macrunara/build-actions/android@v1
+#     with:
+#       task: assembleDebug
+#       module: app
+#       upload_artifact: true
+# =============================================================================
+
+name: 'Macrunara Android Build'
+description: 'Build an Android project with Gradle Wrapper on a Macrunara Mac runner'
+author: 'Macrunara'
+
+branding:
+  icon: 'package'
+  color: 'green'
+
+inputs:
+  task:
+    description: 'Gradle task to run (e.g., assembleDebug, assembleRelease, :app:bundleRelease)'
+    required: false
+    default: 'assembleDebug'
+
+  module:
+    description: 'Gradle module name; task 不含冒号时自动拼成 :<module>:<task>，留空则原样执行'
+    required: false
+    default: 'app'
+
+  java-version:
+    description: 'JDK version to install via setup-java (empty = use preinstalled JDK 17)'
+    required: false
+    default: ''
+
+  upload_artifact:
+    description: 'Whether to upload the artifact path (true/false)'
+    required: false
+    default: 'false'
+
+  artifact_name:
+    description: 'Name of the uploaded artifact'
+    required: false
+    default: 'android-build-products'
+
+  artifact_path:
+    description: 'Path to the artifact directory to upload'
+    required: false
+    default: 'app/build/outputs/'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Show Action Info
+      shell: bash
+      run: |
+        echo "::group::Macrunara Android Build"
+        echo "task:          ${{ inputs.task }}"
+        echo "module:        ${{ inputs.module }}"
+        echo "java-version:  ${{ inputs.java-version }} (empty = preinstalled JDK 17)"
+        echo "upload_artifact: ${{ inputs.upload_artifact }}"
+        echo "artifact_path: ${{ inputs.artifact_path }}"
+        echo "::endgroup::"
+
+    # 预装环境导出：ANDROID_HOME / platform-tools 写入 $GITHUB_ENV 与 $GITHUB_PATH，
+    # 保证后续 step（含非登录 shell）也能拿到；JDK 17 已由镜像预装，仅补 JAVA_HOME。
+    - name: Export preinstalled environment
+      shell: bash
+      run: |
+        export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+        echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+        if [ -d "$ANDROID_HOME/platform-tools" ]; then
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+        fi
+        if [ -z "${JAVA_HOME:-}" ] && /usr/libexec/java_home -v 17 >/dev/null 2>&1; then
+          echo "JAVA_HOME=$(/usr/libexec/java_home -v 17)" >> "$GITHUB_ENV"
+        fi
+        echo "ANDROID_HOME=$ANDROID_HOME"
+        echo "JAVA_HOME=${JAVA_HOME:-$(/usr/libexec/java_home -v 17 2>/dev/null || echo unset)}"
+
+    # 可选：锁定 JDK 版本（默认不需要，节点已预装 temurin-17）
+    - name: Setup JDK (only when java-version is set)
+      if: ${{ inputs.java-version != '' }}
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java-version }}
+
+    - name: Gradle build
+      shell: bash
+      run: |
+        bash "${{ github.action_path }}/scripts/build.sh" \
+          "${{ inputs.task }}" \
+          "${{ inputs.module }}"
+
+    - name: Upload artifact
+      if: ${{ inputs.upload_artifact == 'true' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}
+        path: ${{ inputs.artifact_path }}
+        if-no-files-found: warn

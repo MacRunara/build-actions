@@ -1,0 +1,179 @@
+#!/usr/bin/env bash
+# =============================================================================
+# react-native/tests/run_tests.sh — RN action 脚本单元测试（零依赖 bash 套件）
+#
+# 原理：mock npm/yarn/pod/xcodebuild（调用序列记录到 $MOCK_LOG，
+# xcodebuild 生成假 .app），前置 PATH 后调用 scripts/build.sh 断言链路行为。
+#
+# 本地运行：
+#   cd build-actions
+#   bash react-native/tests/run_tests.sh
+# =============================================================================
+set -uo pipefail
+
+TESTS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ACTION_DIR="$(cd "$TESTS_DIR/.." && pwd)"
+BUILD_SH="$ACTION_DIR/scripts/build.sh"
+
+PASS=0
+FAIL=0
+
+pass() { PASS=$((PASS + 1)); echo "ok   - $1"; }
+fail() { FAIL=$((FAIL + 1)); echo "FAIL - $1"; }
+
+assert_eq() {
+  if [ "$2" = "$3" ]; then pass "$1"; else fail "$1（期望 [$2]，实际 [$3]）"; fi
+}
+assert_file_exists() {
+  if [ -f "$2" ]; then pass "$1"; else fail "$1（文件不存在: $2）"; fi
+}
+assert_contains() {
+  if [ -f "$2" ] && grep -qF -- "$3" "$2"; then pass "$1"; else fail "$1（$2 中未找到: $3）"; fi
+}
+assert_not_contains() {
+  if [ ! -f "$2" ] || ! grep -qF -- "$3" "$2"; then pass "$1"; else fail "$1（$2 中不应出现: $3）"; fi
+}
+
+if [ ! -f "$BUILD_SH" ]; then
+  echo "FATAL - 脚本不存在: $BUILD_SH"
+  exit 1
+fi
+
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# --- mock 工具集 ----------------------------------------------------------------
+MOCKBIN="$WORK/mock-bin"; mkdir -p "$MOCKBIN"
+
+cat > "$MOCKBIN/npm" <<'MOCK'
+#!/usr/bin/env bash
+echo "npm $@" >> "$MOCK_LOG"
+MOCK
+
+cat > "$MOCKBIN/yarn" <<'MOCK'
+#!/usr/bin/env bash
+echo "yarn $@" >> "$MOCK_LOG"
+MOCK
+
+cat > "$MOCKBIN/pod" <<'MOCK'
+#!/usr/bin/env bash
+echo "pod $@" >> "$MOCK_LOG"
+MOCK
+
+cat > "$MOCKBIN/xcodebuild" <<'MOCK'
+#!/usr/bin/env bash
+echo "xcodebuild $@" >> "$MOCK_LOG"
+mkdir -p build/DerivedData/Build/Products/Debug-iphonesimulator
+touch build/DerivedData/Build/Products/Debug-iphonesimulator/MyApp.app
+MOCK
+
+chmod +x "$MOCKBIN/"{npm,yarn,pod,xcodebuild}
+
+# =============================================================================
+# 用例 1：npm 全链路（ci → pod install → npm test → xcodebuild 模拟器）
+# =============================================================================
+CASE="$WORK/case1"; mkdir -p "$CASE/ios"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+touch ios/Podfile
+
+bash "$BUILD_SH" "npm" "ios/MyApp.xcworkspace" "MyApp" "" "true" >out.log 2>&1
+rc=$?
+assert_eq "用例1: 退出码为 0" "0" "$rc"
+assert_contains "用例1: npm ci" "$MOCK_LOG" "npm ci"
+assert_contains "用例1: pod install" "$MOCK_LOG" "pod install"
+assert_contains "用例1: npm test" "$MOCK_LOG" "npm test"
+assert_contains "用例1: xcodebuild 带 workspace" "$MOCK_LOG" "-workspace ios/MyApp.xcworkspace"
+assert_contains "用例1: xcodebuild 模拟器目标" "$MOCK_LOG" "generic/platform=iOS Simulator"
+assert_file_exists "用例1: 生成模拟器 .app" "build/DerivedData/Build/Products/Debug-iphonesimulator/MyApp.app"
+
+# =============================================================================
+# 用例 2：yarn 链路（yarn install --frozen-lockfile + yarn test）
+# =============================================================================
+CASE="$WORK/case2"; mkdir -p "$CASE/ios"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+touch ios/Podfile
+
+bash "$BUILD_SH" "yarn" "ios/MyApp.xcworkspace" "MyApp" "" "true" >out.log 2>&1
+rc=$?
+assert_eq "用例2: 退出码为 0" "0" "$rc"
+assert_contains "用例2: yarn install --frozen-lockfile" "$MOCK_LOG" "yarn install --frozen-lockfile"
+assert_contains "用例2: yarn test" "$MOCK_LOG" "yarn test"
+assert_not_contains "用例2: 不调用 npm" "$MOCK_LOG" "npm ci"
+
+# =============================================================================
+# 用例 3：无 Podfile 跳过 pod install；run-tests=false 跳过 JS 测试
+# =============================================================================
+CASE="$WORK/case3"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+
+bash "$BUILD_SH" "npm" "ios/MyApp.xcworkspace" "MyApp" "" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例3: 退出码为 0" "0" "$rc"
+assert_contains "用例3: 仍有 npm ci" "$MOCK_LOG" "npm ci"
+assert_not_contains "用例3: 无 Podfile 不执行 pod install" "$MOCK_LOG" "pod install"
+assert_not_contains "用例3: 跳过 npm test" "$MOCK_LOG" "npm test"
+assert_contains "用例3: 仍执行 iOS 构建" "$MOCK_LOG" "-workspace ios/MyApp.xcworkspace"
+
+# =============================================================================
+# 用例 4：workspace 非空但 scheme 为空 → 退出码 1 + ::error::
+# =============================================================================
+CASE="$WORK/case4"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+
+out="$(bash "$BUILD_SH" "npm" "ios/MyApp.xcworkspace" "" "" "false" 2>&1)"
+rc=$?
+assert_eq "用例4: 缺 scheme 退出码为 1" "1" "$rc"
+if echo "$out" | grep -qF "::error::ios-scheme is required"; then
+  pass "用例4: 输出 ::error:: 提示"
+else
+  fail "用例4: 缺少 ::error:: 提示（实际输出: $out）"
+fi
+assert_not_contains "用例4: 未执行 xcodebuild" "$MOCK_LOG" "xcodebuild"
+
+# =============================================================================
+# 用例 5：双端构建（android-task 非空时在 android/ 内跑 gradlew）
+# =============================================================================
+CASE="$WORK/case5"; mkdir -p "$CASE/android"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+cat > android/gradlew <<'MOCK'
+#!/usr/bin/env bash
+echo "gradlew $@" >> "$MOCK_LOG"
+MOCK
+chmod +x android/gradlew
+
+bash "$BUILD_SH" "npm" "" "" "assembleDebug" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例5: 退出码为 0" "0" "$rc"
+assert_contains "用例5: android/ 内执行 gradlew assembleDebug" "$MOCK_LOG" "gradlew assembleDebug --no-daemon"
+assert_not_contains "用例5: workspace 为空不执行 xcodebuild" "$MOCK_LOG" "xcodebuild"
+
+# =============================================================================
+# 用例 6：非法 package-manager → 退出码 1
+# =============================================================================
+CASE="$WORK/case6"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+
+out="$(bash "$BUILD_SH" "pnpm" "" "" "" "false" 2>&1)"
+rc=$?
+assert_eq "用例6: 非法 package-manager 退出码为 1" "1" "$rc"
+if echo "$out" | grep -qF "::error::package-manager must be npm|yarn"; then
+  pass "用例6: 输出 ::error:: 提示"
+else
+  fail "用例6: 缺少 ::error:: 提示（实际输出: $out）"
+fi
+
+# --- 汇总 ---------------------------------------------------------------------
+echo ""
+echo "==============================================="
+echo "通过: $PASS  失败: $FAIL"
+echo "==============================================="
+if [ "$FAIL" -ne 0 ]; then
+  exit 1
+fi
+echo "全部用例通过"

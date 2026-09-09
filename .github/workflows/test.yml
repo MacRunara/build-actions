@@ -1,0 +1,46 @@
+name: Test build-actions
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  validate-and-unit-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        action: [ios, android, flutter, react-native]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 校验各 action.yml 是合法 YAML、必须是 composite、且声明了 inputs
+      - name: Validate action.yml syntax
+        shell: bash
+        run: |
+          npx --yes js-yaml@4.1.0 "${{ matrix.action }}/action.yml" > "/tmp/${{ matrix.action }}.json"
+          node - <<'NODE'
+          const fs = require('fs');
+          const action = process.env.ACTION_NAME;
+          const d = JSON.parse(fs.readFileSync(`/tmp/${action}.json`, 'utf8'));
+          if (d.runs?.using !== 'composite') {
+            console.error(`${action}: runs.using must be composite, got:`, d.runs?.using);
+            process.exit(1);
+          }
+          if (!d.inputs || Object.keys(d.inputs).length === 0) {
+            console.error(`${action}: no inputs declared`);
+            process.exit(1);
+          }
+          console.log(`${action}/action.yml valid, inputs: ${Object.keys(d.inputs).join(', ')}`);
+          NODE
+        env:
+          ACTION_NAME: ${{ matrix.action }}
+
+      # 零依赖 bash 单测（mock 各平台构建工具，断言脚本行为）
+      - name: Run script unit tests
+        shell: bash
+        run: bash "${{ matrix.action }}/tests/run_tests.sh"
