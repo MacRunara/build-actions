@@ -28,9 +28,11 @@ IOS_SCHEME="${3:-}"
 ANDROID_TASK="${4:-}"
 RUN_TESTS="${5:-true}"
 
-export PATH="/usr/local/bin:$PATH"
+# 后置追加而非前置：确保能找到预装工具即可，不覆盖 PATH 中已有的同名命令
+#（单测 mock 依赖此行为；前置会把 runner 自带的真 npm 提到 mock 前面）
+export PATH="$PATH:/usr/local/bin"
 for d in /Library/Ruby/Gems/*/bin /usr/local/lib/ruby/gems/*/bin "$HOME/.gem/ruby"/*/bin; do
-  [ -d "$d" ] && export PATH="$d:$PATH"
+  [ -d "$d" ] && export PATH="$PATH:$d"
 done
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 

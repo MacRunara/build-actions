@@ -22,7 +22,7 @@ PLATFORM="${1:?usage: build.sh <platform> <build-mode> <run-tests>}"
 MODE="${2:-debug}"
 RUN_TESTS="${3:-true}"
 
-export PATH="$HOME/flutter/bin:$PATH"
+export PATH="$PATH:$HOME/flutter/bin"
 git config --global --add safe.directory "$HOME/flutter" 2>/dev/null || true
 
 flutter --version
