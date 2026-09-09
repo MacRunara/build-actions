@@ -36,6 +36,11 @@ for d in /Library/Ruby/Gems/*/bin /usr/local/lib/ruby/gems/*/bin "$HOME/.gem/rub
 done
 export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 
+# 镜像内 ~/.npm/_cacache 可能残留 root 属主文件（镜像制作期曾以 root 执行 npm），
+# npm ci 会报 EACCES/EEXIST。把缓存重定向到本次 job 的临时目录，彻底绕开。
+export npm_config_cache="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/npm-cache"
+mkdir -p "$npm_config_cache"
+
 # --- JS 依赖 ------------------------------------------------------------------
 case "$PM" in
   npm)
