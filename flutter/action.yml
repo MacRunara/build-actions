@@ -99,6 +99,6 @@ runs:
       with:
         name: ${{ inputs.artifact_name }}
         path: |
-          build/ios/ipa/
+          build/ios/iphoneos/
           build/app/outputs/flutter-apk/
         if-no-files-found: warn

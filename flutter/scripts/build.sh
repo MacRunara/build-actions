@@ -34,11 +34,10 @@ if [ "$RUN_TESTS" = "true" ]; then
 fi
 
 build_ios() {
-  if [ "$MODE" = "release" ]; then
-    flutter build ipa --release --no-codesign
-  else
-    flutter build ios --debug --no-codesign
-  fi
+  # 免签名 CI 场景统一用 flutter build ios：
+  # `flutter build ipa --no-codesign` 会因无法签名而跳过 IPA 导出（编译成功但无产物），
+  # build ios 则稳定产出 build/ios/iphoneos/Runner.app，可作为 artifact 验证。
+  flutter build ios "--$MODE" --no-codesign
 }
 
 build_android() {

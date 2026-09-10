@@ -49,7 +49,10 @@ cat > "$WORK/mock-bin/flutter" <<'MOCK'
 echo "flutter $@" >> "$MOCK_LOG"
 if [ "$1" = "build" ]; then
   case "$2" in
-    ipa|ios)
+    ios)
+      mkdir -p build/ios/iphoneos/Runner.app
+      ;;
+    ipa)
       mkdir -p build/ios/ipa
       touch "build/ios/ipa/Runner.ipa"
       ;;
@@ -81,11 +84,12 @@ assert_contains "用例1: 执行 analyze" "$MOCK_LOG" "flutter analyze"
 assert_contains "用例1: 执行 test" "$MOCK_LOG" "flutter test"
 assert_contains "用例1: iOS debug 构建（build ios --debug）" "$MOCK_LOG" "flutter build ios --debug --no-codesign"
 assert_contains "用例1: Android debug 构建（build apk --debug）" "$MOCK_LOG" "flutter build apk --debug"
-assert_file_exists "用例1: 生成 iOS 产物" "build/ios/ipa/Runner.ipa"
+assert_file_exists "用例1: 生成 iOS 产物" "build/ios/iphoneos/Runner.app"
 assert_file_exists "用例1: 生成 Android 产物" "build/app/outputs/flutter-apk/app-debug.apk"
 
 # =============================================================================
-# 用例 2：platform=ios + release → build ipa --release --no-codesign
+# 用例 2：platform=ios + release → build ios --release --no-codesign
+# （免签名不用 build ipa：--no-codesign 时 flutter 会跳过 IPA 导出，无产物）
 # =============================================================================
 CASE="$WORK/case2"; mkdir -p "$CASE"; cd "$CASE"
 export MOCK_LOG="$CASE/mock.log"
@@ -94,10 +98,11 @@ export PATH="$WORK/mock-bin:$PATH"
 bash "$BUILD_SH" "ios" "release" "false" >out.log 2>&1
 rc=$?
 assert_eq "用例2: 退出码为 0" "0" "$rc"
-assert_contains "用例2: release 走 build ipa" "$MOCK_LOG" "flutter build ipa --release --no-codesign"
+assert_contains "用例2: release 走 build ios" "$MOCK_LOG" "flutter build ios --release --no-codesign"
+assert_not_contains "用例2: 不走 build ipa" "$MOCK_LOG" "flutter build ipa"
 assert_not_contains "用例2: 不执行 analyze/test" "$MOCK_LOG" "flutter analyze"
 assert_not_contains "用例2: 不构建 Android" "$MOCK_LOG" "flutter build apk"
-assert_file_exists "用例2: 生成 iOS 产物" "build/ios/ipa/Runner.ipa"
+assert_file_exists "用例2: 生成 iOS 产物" "build/ios/iphoneos/Runner.app"
 
 # =============================================================================
 # 用例 3：platform=android + release → 只构建 apk
