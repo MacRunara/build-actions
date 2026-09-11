@@ -190,6 +190,19 @@ else
   fail "用例6: 缺少 ::warning:: 告警（实际输出: $out）"
 fi
 
+# =============================================================================
+# 用例 7：build.sh 默认追加免签名构建设置（CI 无证书环境）
+# =============================================================================
+CASE="$WORK/case7"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+
+bash "$BUILD_SH" "MyApp" "" "Release" "iphoneos" >out.log 2>&1
+rc=$?
+assert_eq "用例7: 退出码为 0" "0" "$rc"
+assert_contains "用例7: 携带 CODE_SIGNING_ALLOWED=NO" "$MOCK_LOG" "CODE_SIGNING_ALLOWED=NO"
+assert_contains "用例7: 携带 CODE_SIGNING_REQUIRED=NO" "$MOCK_LOG" "CODE_SIGNING_REQUIRED=NO"
+assert_file_exists "用例7: 仍正常生成 build/Release-iphoneos/MyApp.app" "build/Release-iphoneos/MyApp.app"
+
 # --- 汇总 ---------------------------------------------------------------------
 echo ""
 echo "==============================================="

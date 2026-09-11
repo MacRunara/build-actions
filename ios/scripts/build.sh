@@ -26,8 +26,16 @@ if [ -n "$PROJECT" ]; then
   PROJECT_ARGS+=("-project" "$PROJECT")
 fi
 
+# CI 环境无签名证书：显式关闭代码签名。
+# iphoneos SDK 默认要求 development team，否则报
+# "Signing for "X" requires a development team"（exit 65）。
+# 后续如需签名分发（TestFlight/蒲公英），再加 signing 相关 inputs 扩展。
 xcodebuild \
   "${PROJECT_ARGS[@]}" \
   -scheme "$SCHEME" \
   -configuration "$CONFIGURATION" \
-  -sdk "$SDK"
+  -sdk "$SDK" \
+  CODE_SIGNING_ALLOWED=NO \
+  CODE_SIGNING_REQUIRED=NO \
+  CODE_SIGN_IDENTITY= \
+  EXPANDED_CODE_SIGN_IDENTITY=
