@@ -171,6 +171,29 @@ assert_contains "用例5b: GRADLE_OPTS 注入代理参数" "$MOCK_LOG" "-Dhttps.
 assert_contains "用例5b: 仍执行 gradlew assembleDebug" "$MOCK_LOG" "gradlew assembleDebug --no-daemon"
 
 # =============================================================================
+# 用例 5c：存在 JDK 17 时 JAVA_HOME 钉到 LTS（AGP JdkImageTransform 与 Java 26 不兼容）
+# =============================================================================
+CASE="$WORK/case5c"; mkdir -p "$CASE/android"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+cat > android/gradlew <<'MOCK'
+#!/usr/bin/env bash
+echo "gradlew $@" >> "$MOCK_LOG"
+MOCK
+chmod +x android/gradlew
+cat > java_home_mock <<'M'
+#!/usr/bin/env bash
+if [ "${1:-}" = "-v" ] && [ "${2:-}" = "17" ]; then echo "/fake/jdk17/Home"; exit 0; fi
+exit 1
+M
+chmod +x java_home_mock
+
+MACRUNARA_JAVA_HOME_BIN="$CASE/java_home_mock" bash "$BUILD_SH" "npm" "" "" "assembleDebug" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例5c: 退出码为 0" "0" "$rc"
+assert_contains "用例5c: JAVA_HOME 钉到 JDK17" "out.log" "JAVA_HOME -> /fake/jdk17/Home"
+
+# =============================================================================
 # 用例 6：非法 package-manager → 退出码 1
 # =============================================================================
 CASE="$WORK/case6"; mkdir -p "$CASE"; cd "$CASE"

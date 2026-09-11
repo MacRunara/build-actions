@@ -41,6 +41,25 @@ setup_gradle_proxy() {
 }
 setup_gradle_proxy
 
+# AGP 的 JdkImageTransform 与 Java 26 的 jlink 不兼容（Gradle 默认捡最新 JDK）。
+# 镜像内装有 Homebrew JDK 17/21：跑 Gradle 前把 JAVA_HOME 钉到 LTS。
+# 外层设 MACRUNARA_GRADLE_JDK=off 可关闭该行为（如客户项目需要更高版本 JDK）。
+setup_gradle_jdk() {
+  if [ "${MACRUNARA_GRADLE_JDK:-on}" = "off" ]; then return 0; fi
+  local jh="${MACRUNARA_JAVA_HOME_BIN:-/usr/libexec/java_home}"
+  local v home
+  for v in 17 21; do
+    home=$("$jh" -v "$v" 2>/dev/null) || continue
+    if [ -n "$home" ]; then
+      export JAVA_HOME="$home"
+      echo "==> JAVA_HOME -> $home (pin LTS JDK for Gradle/AGP)"
+      return 0
+    fi
+  done
+  return 0
+}
+setup_gradle_jdk
+
 flutter --version
 flutter pub get
 

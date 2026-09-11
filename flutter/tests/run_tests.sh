@@ -178,6 +178,42 @@ rc=$?
 assert_eq "用例7: 退出码为 0" "0" "$rc"
 assert_not_contains "用例7: 无代理不注入 proxyHost" "$MOCK_LOG" "proxyHost"
 
+# =============================================================================
+# 用例 8：存在 JDK 17 时 JAVA_HOME 钉到 LTS（AGP JdkImageTransform 与 Java 26 不兼容）
+# =============================================================================
+CASE="$WORK/case8"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$WORK/mock-bin:$PATH"
+cat > java_home_mock <<'M'
+#!/usr/bin/env bash
+if [ "${1:-}" = "-v" ] && [ "${2:-}" = "17" ]; then echo "/fake/jdk17/Home"; exit 0; fi
+exit 1
+M
+chmod +x java_home_mock
+
+MACRUNARA_JAVA_HOME_BIN="$CASE/java_home_mock" bash "$BUILD_SH" android release false >out.log 2>&1
+rc=$?
+assert_eq "用例8: 退出码为 0" "0" "$rc"
+assert_contains "用例8: JAVA_HOME 钉到 JDK17" "out.log" "JAVA_HOME -> /fake/jdk17/Home"
+
+# =============================================================================
+# 用例 9：MACRUNARA_GRADLE_JDK=off 时跳过 JDK 钉版
+# =============================================================================
+CASE="$WORK/case9"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$WORK/mock-bin:$PATH"
+cp "$WORK/case8/java_home_mock" . 2>/dev/null || cat > java_home_mock <<'M'
+#!/usr/bin/env bash
+if [ "${1:-}" = "-v" ] && [ "${2:-}" = "17" ]; then echo "/fake/jdk17/Home"; exit 0; fi
+exit 1
+M
+chmod +x java_home_mock
+
+MACRUNARA_GRADLE_JDK=off MACRUNARA_JAVA_HOME_BIN="$CASE/java_home_mock" bash "$BUILD_SH" android release false >out.log 2>&1
+rc=$?
+assert_eq "用例9: 退出码为 0" "0" "$rc"
+assert_not_contains "用例9: off 时不钉 JAVA_HOME" "out.log" "JAVA_HOME ->"
+
 # --- 汇总 ---------------------------------------------------------------------
 echo ""
 echo "==============================================="

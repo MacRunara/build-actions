@@ -97,6 +97,19 @@ if [ -n "$ANDROID_TASK" ]; then
       echo "==> GRADLE_OPTS proxy -> $host:$port (from env)"
     fi
   fi
+  # AGP 的 JdkImageTransform 与 Java 26 的 jlink 不兼容：JAVA_HOME 钉到 LTS JDK。
+  # 外层设 MACRUNARA_GRADLE_JDK=off 可关闭。
+  if [ "${MACRUNARA_GRADLE_JDK:-on}" != "off" ]; then
+    jh="${MACRUNARA_JAVA_HOME_BIN:-/usr/libexec/java_home}"
+    for v in 17 21; do
+      home=$("$jh" -v "$v" 2>/dev/null) || continue
+      if [ -n "$home" ]; then
+        export JAVA_HOME="$home"
+        echo "==> JAVA_HOME -> $home (pin LTS JDK for Gradle/AGP)"
+        break
+      fi
+    done
+  fi
   (cd android && chmod +x gradlew && ./gradlew "$ANDROID_TASK" --no-daemon)
 fi
 

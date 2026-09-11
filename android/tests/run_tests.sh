@@ -129,6 +129,29 @@ assert_eq "用例5: 退出码为 0" "0" "$rc"
 assert_contains "用例5: GRADLE_OPTS 注入 http 代理" "$MOCK_LOG" "-Dhttp.proxyHost=172.16.0.81 -Dhttp.proxyPort=7890"
 assert_contains "用例5: GRADLE_OPTS 注入 https 代理" "$MOCK_LOG" "-Dhttps.proxyHost=172.16.0.81 -Dhttps.proxyPort=7890"
 
+# =============================================================================
+# 用例 6：存在 JDK 17 时 JAVA_HOME 钉到 LTS（AGP JdkImageTransform 与 Java 26 不兼容）
+# =============================================================================
+CASE="$WORK/case6"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+cat > gradlew <<'MOCK'
+#!/usr/bin/env bash
+echo "$@" >> "$MOCK_LOG"
+MOCK
+chmod +x gradlew
+cat > java_home_mock <<'M'
+#!/usr/bin/env bash
+if [ "${1:-}" = "-v" ] && [ "${2:-}" = "17" ]; then echo "/fake/jdk17/Home"; exit 0; fi
+exit 1
+M
+chmod +x java_home_mock
+
+MACRUNARA_JAVA_HOME_BIN="$CASE/java_home_mock" bash "$BUILD_SH" "assembleDebug" "app" >out.log 2>&1
+rc=$?
+assert_eq "用例6: 退出码为 0" "0" "$rc"
+assert_contains "用例6: JAVA_HOME 钉到 JDK17" "out.log" "JAVA_HOME -> /fake/jdk17/Home"
+assert_contains "用例6: 仍执行 gradlew" "$MOCK_LOG" ":app:assembleDebug --no-daemon"
+
 # --- 汇总 ---------------------------------------------------------------------
 echo ""
 echo "==============================================="
