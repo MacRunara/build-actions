@@ -86,6 +86,17 @@ fi
 
 # --- Android 构建（可选） ------------------------------------------------------
 if [ -n "$ANDROID_TASK" ]; then
+  # Gradle/JVM 不读 http_proxy/https_proxy 环境变量；节点走代理时
+  # 必须转成 JVM 系统属性，否则 Maven 依赖直连被掐（TLS handshake terminated）。
+  proxy="${https_proxy:-${http_proxy:-}}"
+  if [ -n "$proxy" ]; then
+    hostport="${proxy#*://}"; hostport="${hostport#*@}"; hostport="${hostport%/}"
+    host="${hostport%%:*}"; port="${hostport##*:}"
+    if [ -n "$host" ] && [ -n "$port" ] && [ "$port" != "$hostport" ]; then
+      export GRADLE_OPTS="${GRADLE_OPTS:-} -Dhttp.proxyHost=$host -Dhttp.proxyPort=$port -Dhttps.proxyHost=$host -Dhttps.proxyPort=$port"
+      echo "==> GRADLE_OPTS proxy -> $host:$port (from env)"
+    fi
+  fi
   (cd android && chmod +x gradlew && ./gradlew "$ANDROID_TASK" --no-daemon)
 fi
 

@@ -153,6 +153,24 @@ assert_contains "用例5: android/ 内执行 gradlew assembleDebug" "$MOCK_LOG" 
 assert_not_contains "用例5: workspace 为空不执行 xcodebuild" "$MOCK_LOG" "xcodebuild"
 
 # =============================================================================
+# 用例 5b：设置 https_proxy 时向 gradlew 注入 JVM 代理参数（JVM 不读 *_proxy 环境变量）
+# =============================================================================
+CASE="$WORK/case5b"; mkdir -p "$CASE/android"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+cat > android/gradlew <<'MOCK'
+#!/usr/bin/env bash
+echo "gradlew $@ | GRADLE_OPTS=${GRADLE_OPTS:-}" >> "$MOCK_LOG"
+MOCK
+chmod +x android/gradlew
+
+https_proxy=http://172.16.0.81:7890 bash "$BUILD_SH" "npm" "" "" "assembleDebug" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例5b: 退出码为 0" "0" "$rc"
+assert_contains "用例5b: GRADLE_OPTS 注入代理参数" "$MOCK_LOG" "-Dhttps.proxyHost=172.16.0.81 -Dhttps.proxyPort=7890"
+assert_contains "用例5b: 仍执行 gradlew assembleDebug" "$MOCK_LOG" "gradlew assembleDebug --no-daemon"
+
+# =============================================================================
 # 用例 6：非法 package-manager → 退出码 1
 # =============================================================================
 CASE="$WORK/case6"; mkdir -p "$CASE"; cd "$CASE"

@@ -25,6 +25,22 @@ RUN_TESTS="${3:-true}"
 export PATH="$PATH:$HOME/flutter/bin"
 git config --global --add safe.directory "$HOME/flutter" 2>/dev/null || true
 
+# Gradle/JVM 不读 http_proxy/https_proxy 环境变量；节点走代理时
+# 必须转成 JVM 系统属性，否则 Maven 依赖直连被掐（TLS handshake terminated）。
+setup_gradle_proxy() {
+  local proxy="${https_proxy:-${http_proxy:-}}"
+  if [ -z "$proxy" ]; then return 0; fi
+  local hostport="${proxy#*://}"
+  hostport="${hostport#*@}"   # 去掉可能的 user:pass@
+  hostport="${hostport%/}"
+  local host="${hostport%%:*}"
+  local port="${hostport##*:}"
+  if [ -z "$host" ] || [ -z "$port" ] || [ "$port" = "$hostport" ]; then return 0; fi
+  export GRADLE_OPTS="${GRADLE_OPTS:-} -Dhttp.proxyHost=$host -Dhttp.proxyPort=$port -Dhttps.proxyHost=$host -Dhttps.proxyPort=$port"
+  echo "==> GRADLE_OPTS proxy -> $host:$port (from env)"
+}
+setup_gradle_proxy
+
 flutter --version
 flutter pub get
 

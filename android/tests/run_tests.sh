@@ -112,6 +112,23 @@ rc=$?
 assert_eq "用例4: 退出码为 0" "0" "$rc"
 assert_contains "用例4: ANDROID_HOME 缺省指向预装路径" "$MOCK_LOG" "ANDROID_HOME=$HOME/Library/Android/sdk"
 
+# =============================================================================
+# 用例 5：设置 https_proxy 时向 Gradle 注入 JVM 代理参数（JVM 不读 *_proxy 环境变量）
+# =============================================================================
+CASE="$WORK/case5"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+cat > gradlew <<'MOCK'
+#!/usr/bin/env bash
+echo "$@ | GRADLE_OPTS=${GRADLE_OPTS:-}" >> "$MOCK_LOG"
+MOCK
+chmod +x gradlew
+
+https_proxy=http://172.16.0.81:7890 bash "$BUILD_SH" "assembleDebug" "app" >out.log 2>&1
+rc=$?
+assert_eq "用例5: 退出码为 0" "0" "$rc"
+assert_contains "用例5: GRADLE_OPTS 注入 http 代理" "$MOCK_LOG" "-Dhttp.proxyHost=172.16.0.81 -Dhttp.proxyPort=7890"
+assert_contains "用例5: GRADLE_OPTS 注入 https 代理" "$MOCK_LOG" "-Dhttps.proxyHost=172.16.0.81 -Dhttps.proxyPort=7890"
+
 # --- 汇总 ---------------------------------------------------------------------
 echo ""
 echo "==============================================="
