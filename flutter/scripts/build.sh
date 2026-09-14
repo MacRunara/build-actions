@@ -60,6 +60,15 @@ setup_gradle_jdk() {
 }
 setup_gradle_jdk
 
+# 可选：国内节点访问 pub.dev 需过代理且易抖动（TLS 握手随机失败）。
+# job env 设 MACRUNARA_PUB_MIRROR=cn 即切 Flutter 国内镜像直连；
+# 默认不启用，避免海外节点/已有自定义镜像的客户被静默改源。
+if [ "${MACRUNARA_PUB_MIRROR:-}" = "cn" ]; then
+  export PUB_HOSTED_URL="${PUB_HOSTED_URL:-https://pub.flutter-io.cn}"
+  export FLUTTER_STORAGE_BASE_URL="${FLUTTER_STORAGE_BASE_URL:-https://storage.flutter-io.cn}"
+  echo "==> pub mirror -> $PUB_HOSTED_URL (MACRUNARA_PUB_MIRROR=cn)"
+fi
+
 flutter --version
 flutter pub get
 

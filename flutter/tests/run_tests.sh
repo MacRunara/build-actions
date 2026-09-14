@@ -49,7 +49,7 @@ mkdir -p "$WORK/mock-bin"
 cat > "$WORK/mock-bin/flutter" <<'MOCK'
 #!/usr/bin/env bash
 # Mock flutter：记录每次调用到 $MOCK_LOG；build 子命令生成假产物。
-echo "flutter $@ | GRADLE_OPTS=${GRADLE_OPTS:-}" >> "$MOCK_LOG"
+echo "flutter $@ | GRADLE_OPTS=${GRADLE_OPTS:-} PUB_HOSTED_URL=${PUB_HOSTED_URL:-}" >> "$MOCK_LOG"
 if [ "$1" = "build" ]; then
   case "$2" in
     ios)
@@ -213,6 +213,27 @@ MACRUNARA_GRADLE_JDK=off MACRUNARA_JAVA_HOME_BIN="$CASE/java_home_mock" bash "$B
 rc=$?
 assert_eq "用例9: 退出码为 0" "0" "$rc"
 assert_not_contains "用例9: off 时不钉 JAVA_HOME" "out.log" "JAVA_HOME ->"
+
+# =============================================================================
+# 用例 10：MACRUNARA_PUB_MIRROR=cn 时切国内镜像；默认不切
+# =============================================================================
+CASE="$WORK/case10"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$WORK/mock-bin:$PATH"
+
+MACRUNARA_PUB_MIRROR=cn bash "$BUILD_SH" android release false >out.log 2>&1
+rc=$?
+assert_eq "用例10: 退出码为 0" "0" "$rc"
+assert_contains "用例10: cn 开关切国内镜像" "$MOCK_LOG" "PUB_HOSTED_URL=https://pub.flutter-io.cn"
+assert_contains "用例10: 输出镜像提示" "out.log" "pub mirror ->"
+
+CASE="$WORK/case10b"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+
+env -u MACRUNARA_PUB_MIRROR -u PUB_HOSTED_URL bash "$BUILD_SH" android release false >out.log 2>&1
+rc=$?
+assert_eq "用例10b: 退出码为 0" "0" "$rc"
+assert_not_contains "用例10b: 默认不切镜像" "$MOCK_LOG" "PUB_HOSTED_URL=https://pub.flutter-io.cn"
 
 # --- 汇总 ---------------------------------------------------------------------
 echo ""
