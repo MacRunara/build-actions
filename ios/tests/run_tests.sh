@@ -203,6 +203,33 @@ assert_contains "用例7: 携带 CODE_SIGNING_ALLOWED=NO" "$MOCK_LOG" "CODE_SIGN
 assert_contains "用例7: 携带 CODE_SIGNING_REQUIRED=NO" "$MOCK_LOG" "CODE_SIGNING_REQUIRED=NO"
 assert_file_exists "用例7: 仍正常生成 build/Release-iphoneos/MyApp.app" "build/Release-iphoneos/MyApp.app"
 
+# =============================================================================
+# 用例 8：build.sh 显式指定 SYMROOT（产物路径与 action 默认 artifact_path 对齐）
+# 回归防护：2026-09-16 发现未指定 SYMROOT 时产物落 DerivedData，
+# upload-artifact 对 build/Release-iphoneos 永远 "No files found" 静默跳过。
+# =============================================================================
+CASE="$WORK/case8"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+
+bash "$BUILD_SH" "MyApp" "" "Release" "iphoneos" >out.log 2>&1
+rc=$?
+assert_eq "用例8: 退出码为 0" "0" "$rc"
+assert_contains "用例8: 显式携带 SYMROOT" "$MOCK_LOG" "SYMROOT="
+assert_contains "用例8: SYMROOT 指向工作区 build 目录" "$MOCK_LOG" "SYMROOT=$CASE/build"
+
+# =============================================================================
+# 用例 9：GITHUB_WORKSPACE 存在时 SYMROOT 以其为准
+# =============================================================================
+CASE="$WORK/case9"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export GITHUB_WORKSPACE="$WORK/fake-workspace"
+
+bash "$BUILD_SH" "MyApp" "" "Release" "iphoneos" >out.log 2>&1
+rc=$?
+unset GITHUB_WORKSPACE
+assert_eq "用例9: 退出码为 0" "0" "$rc"
+assert_contains "用例9: SYMROOT 使用 GITHUB_WORKSPACE" "$MOCK_LOG" "SYMROOT=$WORK/fake-workspace/build"
+
 # --- 汇总 ---------------------------------------------------------------------
 echo ""
 echo "==============================================="

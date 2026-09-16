@@ -30,11 +30,17 @@ fi
 # iphoneos SDK 默认要求 development team，否则报
 # "Signing for "X" requires a development team"（exit 65）。
 # 后续如需签名分发（TestFlight/蒲公英），再加 signing 相关 inputs 扩展。
+#
+# SYMROOT 必须显式指定：默认产物落在 ~/Library/Developer/Xcode/DerivedData/<app>-<hash>/，
+# action.yml 的默认 artifact_path（build/Release-iphoneos）将永远匹配不到，
+# upload-artifact 静默 "No files found"（2026-09-16 实测踩坑）。
+SYMROOT_DIR="${GITHUB_WORKSPACE:-$PWD}/build"
 xcodebuild \
   "${PROJECT_ARGS[@]}" \
   -scheme "$SCHEME" \
   -configuration "$CONFIGURATION" \
   -sdk "$SDK" \
+  SYMROOT="$SYMROOT_DIR" \
   CODE_SIGNING_ALLOWED=NO \
   CODE_SIGNING_REQUIRED=NO \
   CODE_SIGN_IDENTITY= \

@@ -39,7 +39,7 @@ inputs:
   upload_artifact:
     description: 'Whether to upload the artifact path (true/false)'
     required: false
-    default: 'false'
+    default: 'true'
 
   artifact_name:
     description: 'Name of the uploaded artifact'

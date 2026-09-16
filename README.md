@@ -79,6 +79,13 @@ Macrunara Mac CI 集群（Apple Silicon M4）的**四技术栈构建动作**集�
 
 完整输入参数见各子目录 `action.yml` 顶部注释。
 
+## 构建产物（Artifacts）下载
+
+四个 action 的 `upload_artifact` 默认开启（`'true'`）。构建完成后，产物在
+**Actions → 对应 run 的 Summary 页底部 Artifacts 区块** 下载（zip 包），
+GitHub 默认保留 90 天，可在仓库 Settings → Actions → Artifact retention 调整。
+若显式传 `upload_artifact: false` 则跳过上传。
+
 ## 与旧仓库的关系
 
 - `macrunara/local-mac-runner-action` 已迁入本仓库 `ios/` 子目录，**inputs 完全不变**；
