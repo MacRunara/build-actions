@@ -116,8 +116,24 @@ security import "$P12_PATH" -P "$P12_PASSWORD" -k "$KEYCHAIN_PATH" -A
 # 允许 codesign 等苹果工具无交互访问私钥分区
 security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" > /dev/null
 
+# --- WWDR 中间证书（9-18 真机暴露）：临时 keychain 是全新的，没有 Apple WWDR
+# 中间证书时证书链建不起来，find-identity 会报 0 valid identities。
+# 默认从 apple.com 下载 G3（覆盖 Xcode 11+ 签发的所有开发/分发证书）；
+# 无外网环境可用 MACRUNARA_WWDR_CERT 指定本地 .cer 文件。
+WWDR_CERT="$SIGN_DIR/AppleWWDRCAG3.cer"
+if [ -n "${MACRUNARA_WWDR_CERT:-}" ]; then
+  cp "${MACRUNARA_WWDR_CERT}" "$WWDR_CERT"
+elif ! curl -fsSL --max-time 20 -o "$WWDR_CERT" "https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer" 2>/dev/null; then
+  echo "::warning::WWDR 中间证书下载失败（可用 MACRUNARA_WWDR_CERT 指定本地 .cer），继续尝试"
+fi
+if [ -f "$WWDR_CERT" ]; then
+  security add-certificates -k "$KEYCHAIN_PATH" "$WWDR_CERT" || true
+fi
+
 # --- 推导签名身份与 Team ID ----------------------------------------------------
-IDENTITY_LINE="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | head -1 || true)"
+# 注意 grep '"' 过滤：0 个有效身份时 find-identity 只输出 "0 valid identities found"，
+# 不过滤会把这行当成身份名带进 CODE_SIGN_IDENTITY（9-18 真机暴露）
+IDENTITY_LINE="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep '"' | head -1 || true)"
 SIGN_IDENTITY="$(printf '%s' "$IDENTITY_LINE" | sed -E 's/.*"([^"]+)".*/\1/')"
 TEAM_ID="$(printf '%s' "$IDENTITY_LINE" | sed -nE 's/.*\(([A-Z0-9]+)\).*/\1/p')"
 if [ -z "$TEAM_ID" ]; then
@@ -125,8 +141,12 @@ if [ -z "$TEAM_ID" ]; then
   APP_ID="$(extract_plist_string "application-identifier")"
   TEAM_ID="${APP_ID%%.*}"
 fi
-if [ -z "$SIGN_IDENTITY" ] || [ -z "$TEAM_ID" ]; then
-  echo "::error::未能从证书推导签名身份/Team ID，请确认 p12 包含有效私钥与证书"
+if [ -z "$SIGN_IDENTITY" ]; then
+  echo "::error::keychain 内无有效签名身份（0 valid identities）——p12 私钥/证书不匹配，或证书链无效（WWDR 缺失）"
+  exit 1
+fi
+if [ -z "$TEAM_ID" ]; then
+  echo "::error::未能推导 Team ID，请确认描述文件含 application-identifier"
   exit 1
 fi
 

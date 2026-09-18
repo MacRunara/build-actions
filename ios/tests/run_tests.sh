@@ -268,6 +268,9 @@ EOF
 
 export HOME="$CASE/home"
 export MOCK_PROFILE_PLIST="$CASE/fake-profile.plist"
+# 避免测试访问 apple.com：用本地假 WWDR 证书文件走 MACRUNARA_WWDR_CERT 通道
+printf 'fake-wwdr-cert' > "$CASE/wwdr.cer"
+export MACRUNARA_WWDR_CERT="$CASE/wwdr.cer"
 P12_B64="$(printf 'fake-p12-bytes' | base64 -w0)"
 PROFILE_B64="$(base64 -w0 < "$CASE/fake-profile.plist")"
 
@@ -282,9 +285,45 @@ assert_contains "用例10: local 映射 ad-hoc" "$CASE/signing.env" "EXPORT_METH
 assert_contains "用例10: 创建临时 keychain" "$MOCK_SECURITY_LOG" "create-keychain"
 assert_contains "用例10: 导入 p12 证书" "$MOCK_SECURITY_LOG" "import"
 assert_contains "用例10: 设置私钥分区列表" "$MOCK_SECURITY_LOG" "set-key-partition-list"
+assert_contains "用例10: 安装 WWDR 中间证书" "$MOCK_SECURITY_LOG" "add-certificates"
 assert_file_exists "用例10: 描述文件安装到 Provisioning Profiles" "$CASE/home/Library/MobileDevice/Provisioning Profiles/UUID-1234-ABCD.mobileprovision"
 assert_not_contains "用例10: 日志不泄露证书密码" "$CASE/out.log" "s3cret-pw"
 assert_not_contains "用例10: 日志不泄露 p12 base64" "$CASE/out.log" "$P12_B64"
+
+# =============================================================================
+# 用例 10b：find-identity 0 valid identities（WWDR 缺失/证书链无效）→ ::error::
+# 回归 9-18 真机事故：不能把 "0 valid identities found" 当成身份名
+# =============================================================================
+CASE="$WORK/case10b"; mkdir -p "$CASE/home" "$CASE/mockbin"; cd "$CASE"
+export HOME="$CASE/home"
+export MOCK_PROFILE_PLIST="$WORK/case10/fake-profile.plist"
+export MOCK_SECURITY_LOG="$CASE/security.log"
+printf 'fake-wwdr-cert' > "$CASE/wwdr.cer"
+export MACRUNARA_WWDR_CERT="$CASE/wwdr.cer"
+
+cat > "$CASE/mockbin/security" <<'MOCK'
+#!/usr/bin/env bash
+echo "$@" >> "$MOCK_SECURITY_LOG"
+case "$1" in
+  find-identity) echo '     0 valid identities found' ;;
+  cms) cat "$MOCK_PROFILE_PLIST" ;;
+  list-keychains) echo "$HOME/Library/Keychains/login.keychain-db" ;;
+esac
+MOCK
+chmod +x "$CASE/mockbin/security"
+
+out="$(PATH="$CASE/mockbin:$PATH" bash "$SETUP_SH" "$P12_B64" "s3cret-pw" "$PROFILE_B64" "local" "$CASE/signing.env" 2>&1)"
+rc=$?
+assert_eq "用例10b: 0 valid identities 退出码为 1" "1" "$rc"
+if echo "$out" | grep -qF "::error::keychain 内无有效签名身份"; then
+  pass "用例10b: 输出明确报错"
+else
+  fail "用例10b: 缺少明确报错（实际输出: $out）"
+fi
+assert_not_contains "用例10b: 不生成 signing.env" "$CASE/signing.env" "SIGNING_ENABLED"
+# 后续用例统一走本地假 WWDR 文件，避免访问 apple.com
+printf 'fake-wwdr-cert' > "$WORK/fake-wwdr.cer"
+export MACRUNARA_WWDR_CERT="$WORK/fake-wwdr.cer"
 
 # =============================================================================
 # 用例 11：distribution=none 时不签名、不碰 keychain
