@@ -78,10 +78,60 @@ if [ "$RUN_TESTS" = "true" ]; then
 fi
 
 build_ios() {
+  if [ "${SIGNING_ENABLED:-0}" = "1" ]; then
+    build_ios_signed
+    return 0
+  fi
   # 免签名 CI 场景统一用 flutter build ios：
   # `flutter build ipa --no-codesign` 会因无法签名而跳过 IPA 导出（编译成功但无产物），
   # build ios 则稳定产出 build/ios/iphoneos/Runner.app，可作为 artifact 验证。
   flutter build ios "--$MODE" --no-codesign
+}
+
+# V1.1-2.1 签名链路：flutter build ipa 无法透传 xcodebuild 构建设置，
+# 拆成两步——① flutter build ios --no-codesign 完成引擎编译与 pod 准备；
+# ② 手动 archive（命令行构建设置优先级最高，覆盖工程内自动签名）+ 导出 IPA。
+# 签名环境由 ios/scripts/setup-signing.sh 经 GITHUB_ENV 注入
+#（SIGNING_ENABLED/TEAM_ID/PROFILE_NAME/SIGN_IDENTITY/EXPORT_METHOD）。
+build_ios_signed() {
+  if [ "$MODE" != "release" ]; then
+    echo "::warning::签名 IPA 仅支持 release，build-mode=$MODE 已强制按 release 签名构建"
+  fi
+  flutter build ios --release --no-codesign
+
+  local ws="${MACRUNARA_IOS_WORKSPACE:-ios/Runner.xcworkspace}"
+  local scheme="${MACRUNARA_IOS_SCHEME:-Runner}"
+  local archive="$PWD/build/ios/${scheme}.xcarchive"
+
+  xcodebuild archive \
+    -workspace "$ws" \
+    -scheme "$scheme" \
+    -configuration Release \
+    -sdk iphoneos \
+    -archivePath "$archive" \
+    CODE_SIGN_STYLE=Manual \
+    DEVELOPMENT_TEAM="${TEAM_ID:?SIGNING_ENABLED=1 但缺 TEAM_ID}" \
+    PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME:?SIGNING_ENABLED=1 但缺 PROFILE_NAME}" \
+    CODE_SIGN_IDENTITY="${SIGN_IDENTITY:?SIGNING_ENABLED=1 但缺 SIGN_IDENTITY}"
+
+  # Bundle ID 尽力从 pbxproj 提取（可能含 $(VAR) 变量，提取不到就省略
+  # provisioningProfiles 键，交给 xcodebuild 按描述文件自动匹配）
+  local bundle_id=""
+  local pbxproj="ios/Runner.xcodeproj/project.pbxproj"
+  if [ -f "$pbxproj" ]; then
+    bundle_id=$(sed -nE 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/p' "$pbxproj" | head -1 | tr -d ' ')
+    case "$bundle_id" in *'$'*) bundle_id="" ;; esac
+  fi
+
+  local script_dir
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  bash "$script_dir/../../ios/scripts/gen-export-options.sh" \
+    "$PWD/exportOptions.plist" "${EXPORT_METHOD:-ad-hoc}" "$TEAM_ID" "$PROFILE_NAME" "$bundle_id"
+
+  xcodebuild -exportArchive \
+    -archivePath "$archive" \
+    -exportPath "$PWD/build/ios/Exported" \
+    -exportOptionsPlist "$PWD/exportOptions.plist"
 }
 
 build_android() {

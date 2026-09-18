@@ -63,6 +63,41 @@ inputs:
     required: false
     default: 'rn-build-products'
 
+  # --- V1.1-2.1 iOS 签名（可选；distribution != none 时生效，需配合 ios-workspace/ios-scheme） ---
+  distribution:
+    description: 'iOS distribution target: none | local | pgyer | testflight | firebase. none = unsigned simulator build (default). Upload-type distribution deferred; signed IPA delivered via Artifacts.'
+    required: false
+    default: 'none'
+
+  sign_p12_base64:
+    description: 'Base64-encoded .p12 signing certificate (single line)'
+    required: false
+
+  sign_password:
+    description: 'Password of the .p12 certificate (masked in logs)'
+    required: false
+
+  mobileprovision_base64:
+    description: 'Base64-encoded .mobileprovision provisioning profile (single line)'
+    required: false
+
+  # --- V1.1-2.1 Android 签名（可选；提供 sign_keystore_base64 即生效） ----------
+  sign_keystore_base64:
+    description: 'Base64-encoded .jks/.keystore (single line). Empty = default debug signing.'
+    required: false
+
+  keystore_password:
+    description: 'Keystore store password (masked in logs)'
+    required: false
+
+  key_alias:
+    description: 'Key alias inside the keystore'
+    required: false
+
+  key_password:
+    description: 'Key password (masked in logs)'
+    required: false
+
 runs:
   using: 'composite'
   steps:
@@ -100,6 +135,46 @@ runs:
       with:
         node-version: ${{ inputs.node-version }}
 
+    # 签名材料先打码（V1.1-2.1）
+    - name: Mask signing secrets
+      if: ${{ inputs.distribution != 'none' || inputs.sign_keystore_base64 != '' }}
+      shell: bash
+      run: |
+        echo "::add-mask::${{ inputs.sign_password }}"
+        echo "::add-mask::${{ inputs.sign_p12_base64 }}"
+        echo "::add-mask::${{ inputs.mobileprovision_base64 }}"
+        echo "::add-mask::${{ inputs.keystore_password }}"
+        echo "::add-mask::${{ inputs.key_password }}"
+        echo "::add-mask::${{ inputs.sign_keystore_base64 }}"
+
+    # iOS：临时 keychain + 证书/描述文件（复用 ios action 的脚本）
+    - name: Setup iOS signing
+      if: ${{ inputs.distribution != 'none' }}
+      shell: bash
+      run: |
+        ENV_FILE="${{ runner.temp }}/signing.env"
+        bash "${{ github.action_path }}/../ios/scripts/setup-signing.sh" \
+          "${{ inputs.sign_p12_base64 }}" \
+          "${{ inputs.sign_password }}" \
+          "${{ inputs.mobileprovision_base64 }}" \
+          "${{ inputs.distribution }}" \
+          "$ENV_FILE"
+        cat "$ENV_FILE" >> "$GITHUB_ENV"
+
+    # Android：keystore + init.d 零侵入注入（复用 android action 的脚本）
+    - name: Setup Android signing
+      if: ${{ inputs.sign_keystore_base64 != '' }}
+      shell: bash
+      run: |
+        ENV_FILE="${{ runner.temp }}/android-signing.env"
+        bash "${{ github.action_path }}/../android/scripts/setup-android-signing.sh" \
+          "${{ inputs.sign_keystore_base64 }}" \
+          "${{ inputs.keystore_password }}" \
+          "${{ inputs.key_alias }}" \
+          "${{ inputs.key_password }}" \
+          "$ENV_FILE"
+        cat "$ENV_FILE" >> "$GITHUB_ENV"
+
     - name: React Native build pipeline
       shell: bash
       run: |
@@ -117,5 +192,6 @@ runs:
         name: ${{ inputs.artifact_name }}
         path: |
           build/DerivedData/Build/Products/Debug-iphonesimulator/
+          build/Exported/
           android/app/build/outputs/apk/
         if-no-files-found: warn

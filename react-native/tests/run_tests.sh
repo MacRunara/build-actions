@@ -209,6 +209,47 @@ else
   fail "用例6: 缺少 ::error:: 提示（实际输出: $out）"
 fi
 
+# =============================================================================
+# 用例 7：SIGNING_ENABLED=1 → 手动签名 archive + exportArchive（V1.1-2.1）
+# =============================================================================
+CASE="$WORK/case7"; mkdir -p "$CASE/ios/MyApp.xcodeproj"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+cat > ios/MyApp.xcodeproj/project.pbxproj <<'PBX'
+		PRODUCT_BUNDLE_IDENTIFIER = com.mock.rnapp;
+PBX
+
+SIGNING_ENABLED=1 TEAM_ID=TEAM123 PROFILE_NAME=MockProfile \
+SIGN_IDENTITY="iPhone Distribution: Mock Team (TEAM123)" EXPORT_METHOD=ad-hoc \
+  bash "$BUILD_SH" "npm" "ios/MyApp.xcworkspace" "MyApp" "" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例7: 退出码为 0" "0" "$rc"
+assert_contains "用例7: 执行 xcodebuild archive" "$MOCK_LOG" "xcodebuild archive"
+assert_contains "用例7: 手动签名" "$MOCK_LOG" "CODE_SIGN_STYLE=Manual"
+assert_contains "用例7: DEVELOPMENT_TEAM 注入" "$MOCK_LOG" "DEVELOPMENT_TEAM=TEAM123"
+assert_contains "用例7: PROVISIONING_PROFILE_SPECIFIER 注入" "$MOCK_LOG" "PROVISIONING_PROFILE_SPECIFIER=MockProfile"
+assert_contains "用例7: 真机 sdk" "$MOCK_LOG" "-sdk iphoneos"
+assert_not_contains "用例7: 不走模拟器目标" "$MOCK_LOG" "generic/platform=iOS Simulator"
+assert_contains "用例7: 执行 -exportArchive" "$MOCK_LOG" "-exportArchive"
+assert_contains "用例7: exportOptions method=ad-hoc" "exportOptions.plist" "<string>ad-hoc</string>"
+assert_contains "用例7: exportOptions 手动签名" "exportOptions.plist" "<string>manual</string>"
+assert_contains "用例7: 从 pbxproj 提取 Bundle ID 生成 provisioningProfiles" "exportOptions.plist" "<key>com.mock.rnapp</key>"
+
+# =============================================================================
+# 用例 8：SIGNING_ENABLED=0（默认）→ 保持模拟器 Debug 构建，不产生 exportOptions
+# =============================================================================
+CASE="$WORK/case8"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+
+bash "$BUILD_SH" "npm" "ios/MyApp.xcworkspace" "MyApp" "" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例8: 退出码为 0" "0" "$rc"
+assert_contains "用例8: 模拟器目标构建" "$MOCK_LOG" "generic/platform=iOS Simulator"
+assert_not_contains "用例8: 不执行 archive" "$MOCK_LOG" "xcodebuild archive"
+assert_not_contains "用例8: 不执行 -exportArchive" "$MOCK_LOG" "-exportArchive"
+assert_not_contains "用例8: 不生成 exportOptions.plist" "exportOptions.plist" "<plist"
+
 # --- 汇总 ---------------------------------------------------------------------
 echo ""
 echo "==============================================="

@@ -62,7 +62,7 @@ Macrunara Mac CI 集群（Apple Silicon M4）的**四技术栈构建动作**集�
 - secrets 准备（在 Mac 上执行）：
   `base64 -i signing.p12 | pbcopy`、`base64 -i profile.mobileprovision | pbcopy`（单行 base64）
 - 安全：证书/密码全程 `::add-mask::` 脱敏；keychain 为一次性临时文件，随 VM 销毁
-- Flutter / React-Native 的 iOS 签名复用本链路，后续迭代接入
+- Flutter / React-Native 的 iOS 签名已复用本链路（见对应小节）
 
 ### Android
 
@@ -75,6 +75,27 @@ Macrunara Mac CI 集群（Apple Silicon M4）的**四技术栈构建动作**集�
     artifact_path: app/build/outputs/
 ```
 
+#### 签名构建（V1.1-2.1，可选）
+
+默认不传签名材料时行为与旧版完全一致。传入 keystore 后，通过
+**Gradle init.d 零侵入注入**（不改客户工程的 build.gradle）为所有名字含
+`release` 的 buildType 挂上 `signingConfigs.macrunaraCi`，执行
+`assembleRelease` / `bundleRelease` 即产出签名 APK/AAB：
+
+```yaml
+- uses: macrunara/build-actions/android@v1
+  with:
+    task: assembleRelease
+    sign_keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    keystore_password:    ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+    key_alias:            ${{ secrets.ANDROID_KEY_ALIAS }}
+    key_password:         ${{ secrets.ANDROID_KEY_PASSWORD }}
+```
+
+- secrets 准备：`base64 -i my.keystore | pbcopy`（单行 base64，Windows 用 `certutil -encode` 后去头尾行）
+- keystore 解码到 `$RUNNER_TEMP`（0600 权限），随 VM 销毁；密码不落任何文件，经环境变量传入
+- 只覆盖 release 系 buildType；debug 构建不受影响，四件材料缺一即报错（::error::）
+
 ### Flutter
 
 ```yaml
@@ -85,6 +106,28 @@ Macrunara Mac CI 集群（Apple Silicon M4）的**四技术栈构建动作**集�
     run-tests: 'true'               # analyze + test，可关
     upload_artifact: true           # 上传 build/ios/ipa/ 与 build/app/outputs/flutter-apk/
 ```
+
+签名构建（可选，复用 iOS / Android 两条链路）：
+
+```yaml
+- uses: macrunara/build-actions/flutter@v1
+  with:
+    platform: all
+    build-mode: release
+    # iOS 签名四件（同 iOS 原生）；ios-workspace/ios-scheme 默认可自动识别
+    sign_p12_base64: ${{ secrets.IOS_P12_BASE64 }}
+    sign_password: ${{ secrets.IOS_P12_PASSWORD }}
+    mobileprovision_base64: ${{ secrets.IOS_MOBILEPROVISION_BASE64 }}
+    # Android 签名四件（同 Android）
+    sign_keystore_base64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    keystore_password: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+    key_alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+    key_password: ${{ secrets.ANDROID_KEY_PASSWORD }}
+```
+
+- iOS 侧：`flutter build ios --no-codesign` → `xcodebuild archive`（手动签名）→ 导出 IPA，
+  签名产物在 `build/ios/Exported/` 一并上传；`build-mode: debug` + 签名会强制按 release 编译并给出 ::warning::
+- Android 侧：init.d 注入自动生效，无需额外配置
 
 ### React Native
 
@@ -98,6 +141,10 @@ Macrunara Mac CI 集群（Apple Silicon M4）的**四技术栈构建动作**集�
     run-tests: 'true'               # jest，可关
     upload_artifact: true
 ```
+
+签名构建（可选）：inputs 与 Flutter 相同（iOS 四件 + Android 四件）。
+iOS 侧直接用 `ios-workspace`/`ios-scheme` 做手动签名 archive 并导出 IPA 到
+`build/Exported/` 上传；Android 侧同样走 init.d 注入。
 
 完整输入参数见各子目录 `action.yml` 顶部注释。
 

@@ -235,6 +235,70 @@ rc=$?
 assert_eq "用例10b: 退出码为 0" "0" "$rc"
 assert_not_contains "用例10b: 默认不切镜像" "$MOCK_LOG" "PUB_HOSTED_URL=https://pub.flutter-io.cn"
 
+# =============================================================================
+# 用例 11：SIGNING_ENABLED=1 时走「flutter build ios --no-codesign → 手动签名
+# archive → exportArchive IPA」链路（V1.1-2.1）
+# =============================================================================
+CASE="$WORK/case11"; mkdir -p "$CASE/ios/Runner.xcodeproj"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$WORK/mock-bin:$PATH"
+touch ios/Runner.xcodeproj/project.pbxproj
+echo "PRODUCT_BUNDLE_IDENTIFIER = com.mock.flutterapp;" > ios/Runner.xcodeproj/project.pbxproj
+
+# 本用例补 mock xcodebuild（ios 套件同款：记录参数，导出时生成假 IPA）
+cat > "$WORK/mock-bin/xcodebuild" <<'MOCK'
+#!/usr/bin/env bash
+echo "xcodebuild $@" >> "$MOCK_LOG"
+EXPORT=0
+EXPORT_PATH=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -exportArchive) EXPORT=1 ;;
+    -exportPath) shift; EXPORT_PATH="$1" ;;
+  esac
+  shift
+done
+if [ "$EXPORT" = "1" ]; then
+  mkdir -p "$EXPORT_PATH"
+  touch "$EXPORT_PATH/Runner.ipa"
+fi
+MOCK
+chmod +x "$WORK/mock-bin/xcodebuild"
+
+SIGNING_ENABLED=1 TEAM_ID=TEAM123 PROFILE_NAME=MockProfile \
+  SIGN_IDENTITY="iPhone Distribution: Mock Team (TEAM123)" EXPORT_METHOD=ad-hoc \
+  bash "$BUILD_SH" "ios" "release" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例11: 退出码为 0" "0" "$rc"
+assert_contains "用例11: 先跑 flutter build ios --release --no-codesign" "$MOCK_LOG" "flutter build ios --release --no-codesign"
+assert_contains "用例11: 手动签名 archive" "$MOCK_LOG" "xcodebuild archive"
+assert_contains "用例11: archive 携带 -archivePath" "$MOCK_LOG" "-archivePath"
+assert_contains "用例11: CODE_SIGN_STYLE=Manual" "$MOCK_LOG" "CODE_SIGN_STYLE=Manual"
+assert_contains "用例11: DEVELOPMENT_TEAM 注入" "$MOCK_LOG" "DEVELOPMENT_TEAM=TEAM123"
+assert_contains "用例11: PROVISIONING_PROFILE_SPECIFIER 注入" "$MOCK_LOG" "PROVISIONING_PROFILE_SPECIFIER=MockProfile"
+assert_contains "用例11: 执行 -exportArchive" "$MOCK_LOG" "-exportArchive"
+assert_contains "用例11: exportOptions method=ad-hoc" "$CASE/exportOptions.plist" "<string>ad-hoc</string>"
+assert_contains "用例11: exportOptions 手动签名" "$CASE/exportOptions.plist" "<string>manual</string>"
+assert_contains "用例11: 从 pbxproj 提取 Bundle ID 生成 provisioningProfiles" "$CASE/exportOptions.plist" "com.mock.flutterapp"
+assert_file_exists "用例11: 生成签名 IPA" "build/ios/Exported/Runner.ipa"
+
+# =============================================================================
+# 用例 12：build-mode=debug + 签名 → 强制 release 并出 warning
+# =============================================================================
+CASE="$WORK/case12"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+
+out="$(SIGNING_ENABLED=1 TEAM_ID=TEAM123 PROFILE_NAME=MockProfile SIGN_IDENTITY="Mock" \
+  bash "$BUILD_SH" "ios" "debug" "false" 2>&1)"
+rc=$?
+assert_eq "用例12: 退出码为 0" "0" "$rc"
+if echo "$out" | grep -qF "::warning::签名 IPA 仅支持 release"; then
+  pass "用例12: debug+签名出强制 release warning"
+else
+  fail "用例12: 缺少 warning（实际输出: $out）"
+fi
+assert_contains "用例12: 实际按 release 编译" "$MOCK_LOG" "flutter build ios --release --no-codesign"
+
 # --- 汇总 ---------------------------------------------------------------------
 echo ""
 echo "==============================================="

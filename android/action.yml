@@ -51,6 +51,23 @@ inputs:
     required: false
     default: 'app/build/outputs/'
 
+  # --- V1.1-2.1 Android 签名（可选；提供 sign_keystore_base64 即生效） ----------
+  sign_keystore_base64:
+    description: 'Base64-encoded .jks/.keystore (single line). Empty = unsigned/debug-signed build.'
+    required: false
+
+  keystore_password:
+    description: 'Keystore store password. Stored as a secret; masked in logs.'
+    required: false
+
+  key_alias:
+    description: 'Key alias inside the keystore'
+    required: false
+
+  key_password:
+    description: 'Key password (often same as store password). Stored as a secret; masked in logs.'
+    required: false
+
 runs:
   using: 'composite'
   steps:
@@ -88,6 +105,29 @@ runs:
       with:
         distribution: temurin
         java-version: ${{ inputs.java-version }}
+
+    # 签名材料先打码（V1.1-2.1）
+    - name: Mask signing secrets
+      if: ${{ inputs.sign_keystore_base64 != '' }}
+      shell: bash
+      run: |
+        echo "::add-mask::${{ inputs.keystore_password }}"
+        echo "::add-mask::${{ inputs.key_password }}"
+        echo "::add-mask::${{ inputs.sign_keystore_base64 }}"
+
+    # 零侵入签名注入：init.d 脚本对所有 Gradle 调用生效，客户 build.gradle 无需改动
+    - name: Setup Android signing
+      if: ${{ inputs.sign_keystore_base64 != '' }}
+      shell: bash
+      run: |
+        ENV_FILE="${{ runner.temp }}/android-signing.env"
+        bash "${{ github.action_path }}/scripts/setup-android-signing.sh" \
+          "${{ inputs.sign_keystore_base64 }}" \
+          "${{ inputs.keystore_password }}" \
+          "${{ inputs.key_alias }}" \
+          "${{ inputs.key_password }}" \
+          "$ENV_FILE"
+        cat "$ENV_FILE" >> "$GITHUB_ENV"
 
     - name: Gradle build
       shell: bash

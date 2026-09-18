@@ -36,33 +36,9 @@ if [ -z "$BUNDLE_ID" ] && [ -x "$PLISTBUDDY" ]; then
   BUNDLE_ID=$("$PLISTBUDDY" -c "Print :ApplicationProperties:CFBundleIdentifier" "$ARCHIVE/Info.plist" 2>/dev/null || true)
 fi
 
-{
-  cat <<'HEADER'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-HEADER
-  echo "  <key>method</key>"
-  echo "  <string>$EXPORT_METHOD</string>"
-  if [ "$SIGNING_ENABLED" = "1" ]; then
-    echo "  <key>signingStyle</key>"
-    echo "  <string>manual</string>"
-    if [ -n "$TEAM_ID" ]; then
-      echo "  <key>teamID</key>"
-      echo "  <string>$TEAM_ID</string>"
-    fi
-    if [ -n "$BUNDLE_ID" ] && [ -n "$PROFILE_NAME" ]; then
-      echo "  <key>provisioningProfiles</key>"
-      echo "  <dict>"
-      echo "    <key>$BUNDLE_ID</key>"
-      echo "    <string>$PROFILE_NAME</string>"
-      echo "  </dict>"
-    fi
-  fi
-  echo "</dict>"
-  echo "</plist>"
-} > exportOptions.plist
+# plist 生成逻辑抽到共享脚本（flutter/react-native 签名导出复用同一套）
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "$SCRIPT_DIR/gen-export-options.sh" exportOptions.plist "$EXPORT_METHOD" "$TEAM_ID" "$PROFILE_NAME" "$BUNDLE_ID"
 
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" \

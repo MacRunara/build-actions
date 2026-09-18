@@ -30,6 +30,9 @@ assert_file_exists() {
 assert_contains() {
   if [ -f "$2" ] && grep -qF -- "$3" "$2"; then pass "$1"; else fail "$1（$2 中未找到: $3）"; fi
 }
+assert_not_contains() {
+  if [ ! -f "$2" ] || ! grep -qF -- "$3" "$2"; then pass "$1"; else fail "$1（$2 中不应出现: $3）"; fi
+}
 
 if [ ! -f "$BUILD_SH" ]; then
   echo "FATAL - 脚本不存在: $BUILD_SH"
@@ -151,6 +154,52 @@ rc=$?
 assert_eq "用例6: 退出码为 0" "0" "$rc"
 assert_contains "用例6: JAVA_HOME 钉到 JDK17" "out.log" "JAVA_HOME -> /fake/jdk17/Home"
 assert_contains "用例6: 仍执行 gradlew" "$MOCK_LOG" ":app:assembleDebug --no-daemon"
+
+SETUP_SIGNING_SH="$ACTION_DIR/scripts/setup-android-signing.sh"
+
+# =============================================================================
+# 用例 7：setup-android-signing.sh happy path —— keystore 落盘 + init.d 注入脚本
+# =============================================================================
+CASE="$WORK/case7"; mkdir -p "$CASE/gradle-home"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export GRADLE_USER_HOME="$CASE/gradle-home"
+export RUNNER_TEMP="$CASE/rt"
+KEYSTORE_B64="$(printf 'fake-keystore-bytes' | base64 -w0)"
+
+bash "$SETUP_SIGNING_SH" "$KEYSTORE_B64" "store-pw" "my-alias" "key-pw" "$CASE/signing.env" >out.log 2>&1
+rc=$?
+assert_eq "用例7: 退出码为 0" "0" "$rc"
+assert_file_exists "用例7: keystore 落盘" "$CASE/rt/macrunara-signing/keystore.jks"
+assert_file_exists "用例7: init.d 注入脚本生成" "$CASE/gradle-home/init.d/macrunara-signing.gradle"
+assert_contains "用例7: init 脚本有 env 缺失 no-op 保护" "$CASE/gradle-home/init.d/macrunara-signing.gradle" "MACRUNARA_KEYSTORE_PATH"
+assert_contains "用例7: init 脚本注入 macrunaraCi signingConfig" "$CASE/gradle-home/init.d/macrunara-signing.gradle" "macrunaraCi"
+assert_contains "用例7: init 脚本只覆盖 release 系 buildType" "$CASE/gradle-home/init.d/macrunara-signing.gradle" "contains('release')"
+assert_contains "用例7: env 文件含 keystore 路径" "$CASE/signing.env" "MACRUNARA_KEYSTORE_PATH=$CASE/rt/macrunara-signing/keystore.jks"
+assert_contains "用例7: env 文件含 alias" "$CASE/signing.env" "MACRUNARA_KEY_ALIAS=my-alias"
+assert_contains "用例7: 启用标记" "$CASE/signing.env" "ANDROID_SIGNING_ENABLED=1"
+assert_not_contains "用例7: 日志不泄露 store 密码" "$CASE/out.log" "store-pw"
+assert_not_contains "用例7: 日志不泄露 key 密码" "$CASE/out.log" "key-pw"
+assert_not_contains "用例7: 日志不泄露 keystore base64" "$CASE/out.log" "$KEYSTORE_B64"
+unset GRADLE_USER_HOME RUNNER_TEMP
+
+# =============================================================================
+# 用例 8：setup-android-signing.sh 空 keystore → 跳过；缺密码 → 报错
+# =============================================================================
+CASE="$WORK/case8"; mkdir -p "$CASE/gradle-home"; cd "$CASE"
+export GRADLE_USER_HOME="$CASE/gradle-home"
+
+bash "$SETUP_SIGNING_SH" "" "" "" "" "$CASE/signing.env" >out.log 2>&1
+rc=$?
+assert_eq "用例8: 空 keystore 退出码为 0（跳过）" "0" "$rc"
+assert_eq "用例8: 不生成 init 脚本" "0" "$([ -f "$CASE/gradle-home/init.d/macrunara-signing.gradle" ] && echo 1 || echo 0)"
+
+out="$(bash "$SETUP_SIGNING_SH" "a2V5c3RvcmU=" "" "alias" "" "$CASE/x.env" 2>&1 || true)"
+if echo "$out" | grep -qF "::error::"; then
+  pass "用例8: 缺密码时报 ::error::"
+else
+  fail "用例8: 缺密码未报错（实际输出: $out）"
+fi
+unset GRADLE_USER_HOME
 
 # --- 汇总 ---------------------------------------------------------------------
 echo ""

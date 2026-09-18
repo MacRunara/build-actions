@@ -70,18 +70,51 @@ if [ "$RUN_TESTS" = "true" ]; then
   esac
 fi
 
-# --- iOS 模拟器构建（无需签名） ------------------------------------------------
+# --- iOS 构建 ------------------------------------------------------------------
 if [ -n "$IOS_WORKSPACE" ]; then
   if [ -z "$IOS_SCHEME" ]; then
     echo "::error::ios-scheme is required when ios-workspace is set"
     exit 1
   fi
-  xcodebuild build \
-    -workspace "$IOS_WORKSPACE" \
-    -scheme "$IOS_SCHEME" \
-    -configuration Debug \
-    -destination 'generic/platform=iOS Simulator' \
-    -derivedDataPath build/DerivedData
+  if [ "${SIGNING_ENABLED:-0}" = "1" ]; then
+    # V1.1-2.1 签名链路：手动签名 archive + 导出 IPA（命令行构建设置优先级最高，
+    # 覆盖工程内自动签名）。签名环境由 ios/scripts/setup-signing.sh 经 GITHUB_ENV 注入。
+    ARCHIVE_PATH="$PWD/build/${IOS_SCHEME}.xcarchive"
+    xcodebuild archive \
+      -workspace "$IOS_WORKSPACE" \
+      -scheme "$IOS_SCHEME" \
+      -configuration Release \
+      -sdk iphoneos \
+      -archivePath "$ARCHIVE_PATH" \
+      CODE_SIGN_STYLE=Manual \
+      DEVELOPMENT_TEAM="${TEAM_ID:?SIGNING_ENABLED=1 但缺 TEAM_ID}" \
+      PROVISIONING_PROFILE_SPECIFIER="${PROFILE_NAME:?SIGNING_ENABLED=1 但缺 PROFILE_NAME}" \
+      CODE_SIGN_IDENTITY="${SIGN_IDENTITY:?SIGNING_ENABLED=1 但缺 SIGN_IDENTITY}"
+
+    # Bundle ID 尽力从 pbxproj 提取，提取不到省略 provisioningProfiles 键
+    BUNDLE_ID=""
+    PBXPROJ="${IOS_WORKSPACE%.xcworkspace}.xcodeproj/project.pbxproj"
+    if [ -f "$PBXPROJ" ]; then
+      BUNDLE_ID=$(sed -nE 's/.*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/p' "$PBXPROJ" | head -1 | tr -d ' ')
+      case "$BUNDLE_ID" in *'$'*) BUNDLE_ID="" ;; esac
+    fi
+
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    bash "$SCRIPT_DIR/../../ios/scripts/gen-export-options.sh" \
+      "$PWD/exportOptions.plist" "${EXPORT_METHOD:-ad-hoc}" "$TEAM_ID" "$PROFILE_NAME" "$BUNDLE_ID"
+    xcodebuild -exportArchive \
+      -archivePath "$ARCHIVE_PATH" \
+      -exportPath "$PWD/build/Exported" \
+      -exportOptionsPlist "$PWD/exportOptions.plist"
+  else
+    # 免签名：iOS 用模拟器目标构建，无需签名
+    xcodebuild build \
+      -workspace "$IOS_WORKSPACE" \
+      -scheme "$IOS_SCHEME" \
+      -configuration Debug \
+      -destination 'generic/platform=iOS Simulator' \
+      -derivedDataPath build/DerivedData
+  fi
 fi
 
 # --- Android 构建（可选） ------------------------------------------------------
