@@ -321,6 +321,12 @@ assert_contains "用例12: pgyer 映射 ad-hoc" "$CASE/signing-pgyer.env" "EXPOR
 bash "$SETUP_SH" "$P12_B64" "pw" "$PROFILE_B64" "testflight" "$CASE/signing-tf.env" >out-tf.log 2>&1
 assert_contains "用例12: testflight 映射 app-store" "$CASE/signing-tf.env" "EXPORT_METHOD=app-store"
 
+bash "$SETUP_SH" "$P12_B64" "pw" "$PROFILE_B64" "development" "$CASE/signing-dev.env" >out-dev.log 2>&1
+rc=$?
+assert_eq "用例12: development 退出码为 0" "0" "$rc"
+assert_contains "用例12: development 映射 development" "$CASE/signing-dev.env" "EXPORT_METHOD=development"
+assert_not_contains "用例12: development 不出暂缓 warning" "$CASE/out-dev.log" "::warning::分发上传"
+
 out="$(bash "$SETUP_SH" "$P12_B64" "pw" "$PROFILE_B64" "bogus" "$CASE/signing-x.env" 2>&1 || true)"
 if echo "$out" | grep -qF "::error::未知 distribution"; then
   pass "用例12: 非法 distribution 报错"

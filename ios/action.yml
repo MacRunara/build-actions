@@ -69,7 +69,7 @@ inputs:
     required: false
 
   distribution:
-    description: 'Distribution target: none | local | pgyer | testflight | firebase. none = unsigned build (default). pgyer/testflight/firebase upload is deferred; the signed IPA is delivered via GitHub Artifacts.'
+    description: 'Distribution target: none | local | pgyer | testflight | firebase | development. none = unsigned build (default). development = Development-cert IPA (free Apple ID / Personal Team). pgyer/testflight/firebase upload is deferred; the signed IPA is delivered via GitHub Artifacts.'
     required: false
     default: 'none'
 

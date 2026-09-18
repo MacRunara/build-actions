@@ -51,13 +51,14 @@ Macrunara Mac CI 集群（Apple Silicon M4）的**四技术栈构建动作**集�
 - uses: macrunara/build-actions/ios@v1
   with:
     scheme: MyApp
-    distribution: local                          # none | local | pgyer | testflight | firebase
+    distribution: local                          # none | local | pgyer | testflight | firebase | development
     sign_p12_base64: ${{ secrets.IOS_P12_BASE64 }}
     sign_password: ${{ secrets.IOS_P12_PASSWORD }}
     mobileprovision_base64: ${{ secrets.IOS_MOBILEPROVISION_BASE64 }}
 ```
 
-- `local/pgyer/firebase` → 导出 `ad-hoc` IPA；`testflight` → 导出 `app-store` IPA
+- `local/pgyer/firebase` → 导出 `ad-hoc` IPA；`testflight` → 导出 `app-store` IPA；
+  `development` → 导出 `development` IPA（开发证书 / 免费 Apple ID Personal Team 场景）
 - ⚠️ pgyer / testflight / firebase 的**上传分发暂缓**（第 3 批冻结），目前统一经 Artifacts 交付签名 IPA
 - secrets 准备（在 Mac 上执行）：
   `base64 -i signing.p12 | pbcopy`、`base64 -i profile.mobileprovision | pbcopy`（单行 base64）

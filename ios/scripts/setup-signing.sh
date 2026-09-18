@@ -11,7 +11,7 @@
 #   $1 sign_p12_base64        .p12 证书的 base64（单行）
 #   $2 sign_password          .p12 导出密码
 #   $3 mobileprovision_base64 .mobileprovision 的 base64（单行）
-#   $4 distribution           none|local|pgyer|testflight|firebase
+#   $4 distribution           none|local|pgyer|testflight|firebase|development
 #   $5 out_env_file           签名环境变量输出文件（默认 ./signing.env），
 #                             action.yml 会把它 append 到 $GITHUB_ENV
 #
@@ -45,8 +45,8 @@ if [ "$DISTRIBUTION" = "none" ]; then
 fi
 
 case "$DISTRIBUTION" in
-  local|pgyer|testflight|firebase) ;;
-  *) echo "::error::未知 distribution: $DISTRIBUTION（可选 none|local|pgyer|testflight|firebase）"; exit 1 ;;
+  local|pgyer|testflight|firebase|development) ;;
+  *) echo "::error::未知 distribution: $DISTRIBUTION（可选 none|local|pgyer|testflight|firebase|development）"; exit 1 ;;
 esac
 
 if [ -z "$P12_B64" ] || [ -z "$PROFILE_B64" ]; then
@@ -62,6 +62,9 @@ esac
 EXPORT_METHOD="ad-hoc"
 if [ "$DISTRIBUTION" = "testflight" ]; then
   EXPORT_METHOD="app-store"
+elif [ "$DISTRIBUTION" = "development" ]; then
+  # 免费 Apple ID（Personal Team）/ 开发证书场景：只能出 development IPA
+  EXPORT_METHOD="development"
 fi
 
 SIGN_DIR="${RUNNER_TEMP:-$PWD}/macrunara-signing"
