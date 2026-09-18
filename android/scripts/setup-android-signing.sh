@@ -48,28 +48,30 @@ mkdir -p "$INIT_DIR"
 
 cat > "$INIT_DIR/macrunara-signing.gradle" <<'EOF'
 // Macrunara CI 零侵入签名注入（V1.1-2.1）：未设置 MACRUNARA_KEYSTORE_PATH 时 no-op。
+// 时机说明：gradle.allprojects 的回调在每个项目评估前注册，plugins.withId 在
+// AGP 应用瞬间（评估期间）注入 signingConfig。AGP 于评估结束时固化 DSL——
+// 在 projectsEvaluated 里新增 signingConfig 会报
+// "It is too late to add new signing configs"，故不可用。
 def macrunaraKs = System.getenv('MACRUNARA_KEYSTORE_PATH')
 if (macrunaraKs != null && macrunaraKs.length() > 0) {
-  gradle.projectsEvaluated {
-    gradle.rootProject.allprojects { p ->
-      p.plugins.withId('com.android.application') {
-        def androidExt = p.extensions.findByName('android')
-        if (androidExt != null) {
-          androidExt.signingConfigs {
-            macrunaraCi {
-              storeFile file(macrunaraKs)
-              storePassword System.getenv('MACRUNARA_KEYSTORE_PASSWORD')
-              keyAlias System.getenv('MACRUNARA_KEY_ALIAS')
-              keyPassword System.getenv('MACRUNARA_KEY_PASSWORD')
-            }
+  gradle.allprojects { p ->
+    p.plugins.withId('com.android.application') {
+      def androidExt = p.extensions.findByName('android')
+      if (androidExt != null) {
+        androidExt.signingConfigs {
+          macrunaraCi {
+            storeFile new File(macrunaraKs)
+            storePassword System.getenv('MACRUNARA_KEYSTORE_PASSWORD')
+            keyAlias System.getenv('MACRUNARA_KEY_ALIAS')
+            keyPassword System.getenv('MACRUNARA_KEY_PASSWORD')
           }
-          androidExt.buildTypes.all { bt ->
-            if (bt.name.toLowerCase().contains('release')) {
-              bt.signingConfig = androidExt.signingConfigs.macrunaraCi
-            }
-          }
-          p.logger.lifecycle('==> macrunara signing injected (release buildTypes)')
         }
+        androidExt.buildTypes.all { bt ->
+          if (bt.name.toLowerCase().contains('release')) {
+            bt.signingConfig = androidExt.signingConfigs.macrunaraCi
+          }
+        }
+        p.logger.lifecycle('==> macrunara signing injected (release buildTypes)')
       }
     }
   }

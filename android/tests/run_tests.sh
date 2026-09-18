@@ -174,6 +174,8 @@ assert_file_exists "用例7: init.d 注入脚本生成" "$CASE/gradle-home/init.
 assert_contains "用例7: init 脚本有 env 缺失 no-op 保护" "$CASE/gradle-home/init.d/macrunara-signing.gradle" "MACRUNARA_KEYSTORE_PATH"
 assert_contains "用例7: init 脚本注入 macrunaraCi signingConfig" "$CASE/gradle-home/init.d/macrunara-signing.gradle" "macrunaraCi"
 assert_contains "用例7: init 脚本只覆盖 release 系 buildType" "$CASE/gradle-home/init.d/macrunara-signing.gradle" "contains('release')"
+assert_contains "用例7: 评估期注入（gradle.allprojects）" "$CASE/gradle-home/init.d/macrunara-signing.gradle" "gradle.allprojects"
+assert_not_contains "用例7: 不用 projectsEvaluated（AGP 固化 DSL 后太晚会报错）" "$CASE/gradle-home/init.d/macrunara-signing.gradle" "projectsEvaluated {"
 assert_contains "用例7: env 文件含 keystore 路径" "$CASE/signing.env" "MACRUNARA_KEYSTORE_PATH=$CASE/rt/macrunara-signing/keystore.jks"
 assert_contains "用例7: env 文件含 alias" "$CASE/signing.env" "MACRUNARA_KEY_ALIAS=my-alias"
 assert_contains "用例7: 启用标记" "$CASE/signing.env" "ANDROID_SIGNING_ENABLED=1"
