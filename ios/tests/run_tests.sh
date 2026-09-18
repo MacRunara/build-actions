@@ -327,6 +327,40 @@ printf 'fake-wwdr-cert' > "$WORK/fake-wwdr.cer"
 export MACRUNARA_WWDR_CERT="$WORK/fake-wwdr.cer"
 
 # =============================================================================
+# 用例 10c：证书 Team 与描述文件 Team 不一致 → ::error::（9-18 真机暴露）
+# =============================================================================
+CASE="$WORK/case10c"; mkdir -p "$CASE/home"; cd "$CASE"
+export HOME="$CASE/home"
+export MOCK_SECURITY_LOG="$CASE/security.log"
+cat > "$CASE/mismatch-profile.plist" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>UUID</key>
+  <string>UUID-9999-ABCD</string>
+  <key>Name</key>
+  <string>MockProfileOtherTeam</string>
+  <key>Entitlements</key>
+  <dict>
+    <key>application-identifier</key>
+    <string>TEAM999.com.mock.app</string>
+  </dict>
+</dict></plist>
+EOF
+export MOCK_PROFILE_PLIST="$CASE/mismatch-profile.plist"
+MIS_PROFILE_B64="$(base64 -w0 < "$CASE/mismatch-profile.plist")"
+
+out="$(bash "$SETUP_SH" "$P12_B64" "s3cret-pw" "$MIS_PROFILE_B64" "local" "$CASE/signing.env" 2>&1)"
+rc=$?
+assert_eq "用例10c: Team 不一致退出码为 1" "1" "$rc"
+if echo "$out" | grep -qF "证书 Team（TEAM123）与描述文件 Team（TEAM999）不一致"; then
+  pass "用例10c: 输出 Team 不一致报错"
+else
+  fail "用例10c: 缺少 Team 不一致报错（实际输出: $out）"
+fi
+# 还原描述文件 mock，避免影响后续用例
+export MOCK_PROFILE_PLIST="$WORK/case10/fake-profile.plist"
+
+# =============================================================================
 # 用例 11：distribution=none 时不签名、不碰 keychain
 # =============================================================================
 CASE="$WORK/case11"; mkdir -p "$CASE"; cd "$CASE"

@@ -141,12 +141,19 @@ fi
 # 不过滤会把这行当成身份名带进 CODE_SIGN_IDENTITY（9-18 真机暴露）
 IDENTITY_LINE="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep '"' | head -1 || true)"
 SIGN_IDENTITY="$(printf '%s' "$IDENTITY_LINE" | sed -E 's/.*"([^"]+)".*/\1/')"
-TEAM_ID="$(printf '%s' "$IDENTITY_LINE" | sed -nE 's/.*\(([A-Z0-9]+)\).*/\1/p')"
-if [ -z "$TEAM_ID" ]; then
-  # 兜底：application-identifier 形如 TEAMID.com.example.app，取点前前缀
-  APP_ID="$(extract_plist_string "application-identifier")"
-  TEAM_ID="${APP_ID%%.*}"
+CERT_TEAM="$(printf '%s' "$IDENTITY_LINE" | sed -nE 's/.*\(([A-Z0-9]+)\).*/\1/p')"
+
+# 描述文件 Team（application-identifier 形如 TEAMID.com.example.app）
+APP_ID="$(extract_plist_string "application-identifier")"
+PROFILE_TEAM="${APP_ID%%.*}"
+
+# 9-18 真机暴露：证书与描述文件分属不同 Team 时 xcodebuild 才报匹配失败，
+# 在这里提前拦截并给出可操作提示
+if [ -n "$CERT_TEAM" ] && [ -n "$PROFILE_TEAM" ] && [ "$CERT_TEAM" != "$PROFILE_TEAM" ]; then
+  echo "::error::证书 Team（$CERT_TEAM）与描述文件 Team（$PROFILE_TEAM）不一致——p12 与 mobileprovision 必须来自同一个 Apple 开发者团队，请重新导出/生成后再试"
+  exit 1
 fi
+TEAM_ID="${CERT_TEAM:-$PROFILE_TEAM}"
 if [ -z "$SIGN_IDENTITY" ]; then
   echo "::error::keychain 内无有效签名身份（0 valid identities）——p12 私钥/证书不匹配，或证书链无效（WWDR 缺失）"
   exit 1
