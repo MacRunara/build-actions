@@ -92,10 +92,16 @@ if [ -z "$PROFILE_UUID" ] || [ -z "$PROFILE_NAME" ]; then
   exit 1
 fi
 
-# 安装描述文件到 Xcode 约定目录
-PROFILES_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
-mkdir -p "$PROFILES_DIR"
-cp "$PROFILE_PATH" "$PROFILES_DIR/$PROFILE_UUID.mobileprovision"
+# 安装描述文件到 Xcode 约定目录（9-18 真机暴露：Xcode 16+ 已迁到
+# UserData/Provisioning Profiles，老目录不再被读取——两个目录都装以兼容新旧 Xcode）
+PROFILE_DESTS=(
+  "$HOME/Library/MobileDevice/Provisioning Profiles"
+  "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+)
+for D in "${PROFILE_DESTS[@]}"; do
+  mkdir -p "$D"
+  cp "$PROFILE_PATH" "$D/$PROFILE_UUID.mobileprovision"
+done
 
 # --- 一次性临时 keychain -------------------------------------------------------
 KEYCHAIN_PATH="$SIGN_DIR/macrunara-signing.keychain-db"

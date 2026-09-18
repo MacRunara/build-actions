@@ -287,6 +287,7 @@ assert_contains "用例10: 导入 p12 证书" "$MOCK_SECURITY_LOG" "import"
 assert_contains "用例10: 设置私钥分区列表" "$MOCK_SECURITY_LOG" "set-key-partition-list"
 assert_contains "用例10: 安装 WWDR 中间证书" "$MOCK_SECURITY_LOG" "add-certificates"
 assert_file_exists "用例10: 描述文件安装到 Provisioning Profiles" "$CASE/home/Library/MobileDevice/Provisioning Profiles/UUID-1234-ABCD.mobileprovision"
+assert_file_exists "用例10: 描述文件安装到 Xcode16+ 新目录" "$CASE/home/Library/Developer/Xcode/UserData/Provisioning Profiles/UUID-1234-ABCD.mobileprovision"
 assert_not_contains "用例10: 日志不泄露证书密码" "$CASE/out.log" "s3cret-pw"
 assert_not_contains "用例10: 日志不泄露 p12 base64" "$CASE/out.log" "$P12_B64"
 
