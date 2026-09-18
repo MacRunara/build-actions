@@ -20,16 +20,49 @@ if [ -z "$ARCHIVE" ]; then
 fi
 
 echo "Found archive: $ARCHIVE"
-cat > exportOptions.plist <<'EOF'
+
+# V1.1-2.1：导出方式与手动签名参数来自环境变量（setup-signing.sh 经 GITHUB_ENV 注入）。
+# 无签名环境时保持历史行为：method=development、无签名键。
+EXPORT_METHOD="${EXPORT_METHOD:-development}"
+TEAM_ID="${TEAM_ID:-}"
+PROFILE_NAME="${PROFILE_NAME:-}"
+SIGNING_ENABLED="${SIGNING_ENABLED:-0}"
+
+# Bundle ID 用于手动签名的 provisioningProfiles 映射；从归档 Info.plist 尽力提取，
+# 提取不到就省略该键（xcodebuild 会按 profile 自动匹配）。
+BUNDLE_ID="${BUNDLE_ID:-}"
+PLISTBUDDY="${PLISTBUDDY_BIN:-/usr/libexec/PlistBuddy}"
+if [ -z "$BUNDLE_ID" ] && [ -x "$PLISTBUDDY" ]; then
+  BUNDLE_ID=$("$PLISTBUDDY" -c "Print :ApplicationProperties:CFBundleIdentifier" "$ARCHIVE/Info.plist" 2>/dev/null || true)
+fi
+
+{
+  cat <<'HEADER'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>method</key>
-  <string>development</string>
-</dict>
-</plist>
-EOF
+HEADER
+  echo "  <key>method</key>"
+  echo "  <string>$EXPORT_METHOD</string>"
+  if [ "$SIGNING_ENABLED" = "1" ]; then
+    echo "  <key>signingStyle</key>"
+    echo "  <string>manual</string>"
+    if [ -n "$TEAM_ID" ]; then
+      echo "  <key>teamID</key>"
+      echo "  <string>$TEAM_ID</string>"
+    fi
+    if [ -n "$BUNDLE_ID" ] && [ -n "$PROFILE_NAME" ]; then
+      echo "  <key>provisioningProfiles</key>"
+      echo "  <dict>"
+      echo "    <key>$BUNDLE_ID</key>"
+      echo "    <string>$PROFILE_NAME</string>"
+      echo "  </dict>"
+    fi
+  fi
+  echo "</dict>"
+  echo "</plist>"
+} > exportOptions.plist
 
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE" \

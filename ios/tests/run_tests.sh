@@ -230,6 +230,140 @@ unset GITHUB_WORKSPACE
 assert_eq "用例9: 退出码为 0" "0" "$rc"
 assert_contains "用例9: SYMROOT 使用 GITHUB_WORKSPACE" "$MOCK_LOG" "SYMROOT=$WORK/fake-workspace/build"
 
+SETUP_SH="$ACTION_DIR/scripts/setup-signing.sh"
+
+# =============================================================================
+# 用例 10：setup-signing.sh happy path（distribution=local）
+# mock security：记录参数、find-identity 返回假身份、cms 输出假描述文件 plist
+# =============================================================================
+CASE="$WORK/case10"; mkdir -p "$CASE/home"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export MOCK_SECURITY_LOG="$CASE/security.log"
+
+cat > "$WORK/mock-bin/security" <<'MOCK'
+#!/usr/bin/env bash
+echo "$@" >> "$MOCK_SECURITY_LOG"
+case "$1" in
+  find-identity) echo '  1) 0123456789ABCDEF0123456789ABCDEF01234567 "iPhone Distribution: Mock Team (TEAM123)"' ;;
+  cms) cat "$MOCK_PROFILE_PLIST" ;;
+  list-keychains) echo "$HOME/Library/Keychains/login.keychain-db" ;;
+esac
+MOCK
+chmod +x "$WORK/mock-bin/security"
+
+cat > "$CASE/fake-profile.plist" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+  <key>UUID</key>
+  <string>UUID-1234-ABCD</string>
+  <key>Name</key>
+  <string>MockProfile</string>
+  <key>Entitlements</key>
+  <dict>
+    <key>application-identifier</key>
+    <string>TEAM123.com.mock.app</string>
+  </dict>
+</dict></plist>
+EOF
+
+export HOME="$CASE/home"
+export MOCK_PROFILE_PLIST="$CASE/fake-profile.plist"
+P12_B64="$(printf 'fake-p12-bytes' | base64 -w0)"
+PROFILE_B64="$(base64 -w0 < "$CASE/fake-profile.plist")"
+
+bash "$SETUP_SH" "$P12_B64" "s3cret-pw" "$PROFILE_B64" "local" "$CASE/signing.env" >out.log 2>&1
+rc=$?
+assert_eq "用例10: setup-signing 退出码为 0" "0" "$rc"
+assert_contains "用例10: signing.env 启用签名" "$CASE/signing.env" "SIGNING_ENABLED=1"
+assert_contains "用例10: 推导 TEAM_ID" "$CASE/signing.env" "TEAM_ID=TEAM123"
+assert_contains "用例10: 解析 PROFILE_UUID" "$CASE/signing.env" "PROFILE_UUID=UUID-1234-ABCD"
+assert_contains "用例10: 解析 PROFILE_NAME" "$CASE/signing.env" "PROFILE_NAME=MockProfile"
+assert_contains "用例10: local 映射 ad-hoc" "$CASE/signing.env" "EXPORT_METHOD=ad-hoc"
+assert_contains "用例10: 创建临时 keychain" "$MOCK_SECURITY_LOG" "create-keychain"
+assert_contains "用例10: 导入 p12 证书" "$MOCK_SECURITY_LOG" "import"
+assert_contains "用例10: 设置私钥分区列表" "$MOCK_SECURITY_LOG" "set-key-partition-list"
+assert_file_exists "用例10: 描述文件安装到 Provisioning Profiles" "$CASE/home/Library/MobileDevice/Provisioning Profiles/UUID-1234-ABCD.mobileprovision"
+assert_not_contains "用例10: 日志不泄露证书密码" "$CASE/out.log" "s3cret-pw"
+assert_not_contains "用例10: 日志不泄露 p12 base64" "$CASE/out.log" "$P12_B64"
+
+# =============================================================================
+# 用例 11：distribution=none 时不签名、不碰 keychain
+# =============================================================================
+CASE="$WORK/case11"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_SECURITY_LOG="$CASE/security.log"
+
+bash "$SETUP_SH" "" "" "" "none" "$CASE/signing.env" >out.log 2>&1
+rc=$?
+assert_eq "用例11: none 退出码为 0" "0" "$rc"
+assert_contains "用例11: SIGNING_ENABLED=0" "$CASE/signing.env" "SIGNING_ENABLED=0"
+assert_eq "用例11: 未调用 security" "0" "$([ -f "$MOCK_SECURITY_LOG" ] && echo 1 || echo 0)"
+
+# =============================================================================
+# 用例 12：上传型分发暂缓（pgyer→warning+ad-hoc，testflight→app-store）
+# =============================================================================
+CASE="$WORK/case12"; mkdir -p "$CASE/home"; cd "$CASE"
+export HOME="$CASE/home"
+export MOCK_SECURITY_LOG="$CASE/security.log"
+export MOCK_PROFILE_PLIST="$WORK/case10/fake-profile.plist"
+P12_B64="$(printf 'fake-p12-bytes' | base64 -w0)"
+PROFILE_B64="$(base64 -w0 < "$MOCK_PROFILE_PLIST")"
+
+out="$(bash "$SETUP_SH" "$P12_B64" "pw" "$PROFILE_B64" "pgyer" "$CASE/signing-pgyer.env" 2>&1)"
+rc=$?
+assert_eq "用例12: pgyer 退出码为 0" "0" "$rc"
+if echo "$out" | grep -qF "::warning::分发上传"; then
+  pass "用例12: pgyer 输出暂缓 warning"
+else
+  fail "用例12: pgyer 缺少暂缓 warning（实际输出: $out）"
+fi
+assert_contains "用例12: pgyer 映射 ad-hoc" "$CASE/signing-pgyer.env" "EXPORT_METHOD=ad-hoc"
+
+bash "$SETUP_SH" "$P12_B64" "pw" "$PROFILE_B64" "testflight" "$CASE/signing-tf.env" >out-tf.log 2>&1
+assert_contains "用例12: testflight 映射 app-store" "$CASE/signing-tf.env" "EXPORT_METHOD=app-store"
+
+out="$(bash "$SETUP_SH" "$P12_B64" "pw" "$PROFILE_B64" "bogus" "$CASE/signing-x.env" 2>&1 || true)"
+if echo "$out" | grep -qF "::error::未知 distribution"; then
+  pass "用例12: 非法 distribution 报错"
+else
+  fail "用例12: 非法 distribution 未报错（实际输出: $out）"
+fi
+
+# =============================================================================
+# 用例 13：build.sh 在 SIGNING_ENABLED=1 时切换手动签名 archive 模式
+# =============================================================================
+CASE="$WORK/case13"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+
+SIGNING_ENABLED=1 TEAM_ID=TEAM123 PROFILE_NAME=MockProfile \
+  SIGN_IDENTITY="iPhone Distribution: Mock Team (TEAM123)" \
+  bash "$BUILD_SH" "MyApp" "" "Release" "iphoneos" >out.log 2>&1
+rc=$?
+assert_eq "用例13: 签名 archive 退出码为 0" "0" "$rc"
+assert_contains "用例13: 使用 archive 动作" "$MOCK_LOG" "archive"
+assert_contains "用例13: 携带 -archivePath" "$MOCK_LOG" "-archivePath"
+assert_contains "用例13: 手动签名 CODE_SIGN_STYLE=Manual" "$MOCK_LOG" "CODE_SIGN_STYLE=Manual"
+assert_contains "用例13: 携带 DEVELOPMENT_TEAM" "$MOCK_LOG" "DEVELOPMENT_TEAM=TEAM123"
+assert_contains "用例13: 携带 PROVISIONING_PROFILE_SPECIFIER" "$MOCK_LOG" "PROVISIONING_PROFILE_SPECIFIER=MockProfile"
+assert_contains "用例13: 携带 CODE_SIGN_IDENTITY" "$MOCK_LOG" "CODE_SIGN_IDENTITY=iPhone Distribution: Mock Team (TEAM123)"
+assert_not_contains "用例13: 签名模式不再带 CODE_SIGNING_ALLOWED=NO" "$MOCK_LOG" "CODE_SIGNING_ALLOWED=NO"
+
+# =============================================================================
+# 用例 14：export-archive.sh 签名导出（手动签名 + ad-hoc + teamID）
+# =============================================================================
+CASE="$WORK/case14"; mkdir -p "$CASE/MyApp.xcarchive"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+touch "MyApp.xcarchive/Info.plist"   # 空 plist：Bundle ID 提取失败，省略 provisioningProfiles
+
+SIGNING_ENABLED=1 EXPORT_METHOD=ad-hoc TEAM_ID=TEAM123 PROFILE_NAME=MockProfile \
+  bash "$EXPORT_SH" >out.log 2>&1
+rc=$?
+assert_eq "用例14: 签名导出退出码为 0" "0" "$rc"
+assert_contains "用例14: 调用了 -exportArchive" "$MOCK_LOG" "-exportArchive"
+assert_contains "用例14: method=ad-hoc" "$CASE/exportOptions.plist" "<string>ad-hoc</string>"
+assert_contains "用例14: signingStyle=manual" "$CASE/exportOptions.plist" "<string>manual</string>"
+assert_contains "用例14: 携带 teamID" "$CASE/exportOptions.plist" "<string>TEAM123</string>"
+assert_not_contains "用例14: 无 Bundle ID 时省略 provisioningProfiles" "$CASE/exportOptions.plist" "provisioningProfiles"
+
 # --- 汇总 ---------------------------------------------------------------------
 echo ""
 echo "==============================================="

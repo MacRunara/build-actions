@@ -42,6 +42,28 @@ Macrunara Mac CI 集群（Apple Silicon M4）的**四技术栈构建动作**集�
     artifact_path: build/Release-iphoneos
 ```
 
+#### 签名构建（V1.1-2.1，可选）
+
+默认 `distribution: none` 为免签名构建（行为与旧版完全一致）。传入签名材料后自动切换为
+**手动签名 archive → 导出签名 IPA**，IPA 以 `<artifact_name>-signed-ipa` 上传 Artifacts：
+
+```yaml
+- uses: macrunara/build-actions/ios@v1
+  with:
+    scheme: MyApp
+    distribution: local                          # none | local | pgyer | testflight | firebase
+    sign_p12_base64: ${{ secrets.IOS_P12_BASE64 }}
+    sign_password: ${{ secrets.IOS_P12_PASSWORD }}
+    mobileprovision_base64: ${{ secrets.IOS_MOBILEPROVISION_BASE64 }}
+```
+
+- `local/pgyer/firebase` → 导出 `ad-hoc` IPA；`testflight` → 导出 `app-store` IPA
+- ⚠️ pgyer / testflight / firebase 的**上传分发暂缓**（第 3 批冻结），目前统一经 Artifacts 交付签名 IPA
+- secrets 准备（在 Mac 上执行）：
+  `base64 -i signing.p12 | pbcopy`、`base64 -i profile.mobileprovision | pbcopy`（单行 base64）
+- 安全：证书/密码全程 `::add-mask::` 脱敏；keychain 为一次性临时文件，随 VM 销毁
+- Flutter / React-Native 的 iOS 签名复用本链路，后续迭代接入
+
 ### Android
 
 ```yaml

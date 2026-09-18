@@ -55,6 +55,24 @@ inputs:
     required: false
     default: 'build/Release-iphoneos'
 
+  # --- V1.1-2.1 签名链路（可选；distribution != none 时生效） -------------------
+  sign_p12_base64:
+    description: 'Base64-encoded .p12 signing certificate (single line). Stored as a secret; masked in logs.'
+    required: false
+
+  sign_password:
+    description: 'Password of the .p12 certificate. Stored as a secret; masked in logs.'
+    required: false
+
+  mobileprovision_base64:
+    description: 'Base64-encoded .mobileprovision provisioning profile (single line).'
+    required: false
+
+  distribution:
+    description: 'Distribution target: none | local | pgyer | testflight | firebase. none = unsigned build (default). pgyer/testflight/firebase upload is deferred; the signed IPA is delivered via GitHub Artifacts.'
+    required: false
+    default: 'none'
+
 runs:
   using: 'composite'
   steps:
@@ -68,10 +86,35 @@ runs:
         echo "sdk:           ${{ inputs.sdk }}"
         echo "upload_artifact: ${{ inputs.upload_artifact }}"
         echo "artifact_path: ${{ inputs.artifact_path }}"
+        echo "distribution:  ${{ inputs.distribution }}"
         echo "::endgroup::"
+
+    # 签名材料先打码：后续任何步骤意外回显都会被 Actions 替换为 ***
+    - name: Mask signing secrets
+      if: ${{ inputs.distribution != 'none' }}
+      shell: bash
+      run: |
+        echo "::add-mask::${{ inputs.sign_password }}"
+        echo "::add-mask::${{ inputs.sign_p12_base64 }}"
+        echo "::add-mask::${{ inputs.mobileprovision_base64 }}"
+
+    # 临时 keychain + 证书/描述文件安装；产出的签名环境变量注入后续步骤
+    - name: Setup signing keychain
+      if: ${{ inputs.distribution != 'none' }}
+      shell: bash
+      run: |
+        ENV_FILE="${{ runner.temp }}/signing.env"
+        bash "${{ github.action_path }}/scripts/setup-signing.sh" \
+          "${{ inputs.sign_p12_base64 }}" \
+          "${{ inputs.sign_password }}" \
+          "${{ inputs.mobileprovision_base64 }}" \
+          "${{ inputs.distribution }}" \
+          "$ENV_FILE"
+        cat "$ENV_FILE" >> "$GITHUB_ENV"
 
     # 构建逻辑在 scripts/build.sh，便于本地单测（见 tests/run_tests.sh）。
     # 用 bash 显式调用可规避脚本 +x 权限在 git 中丢失的问题。
+    # SIGNING_ENABLED=1 时 build.sh 自动切换为手动签名 archive 模式。
     - name: Build Xcode project
       shell: bash
       run: |
@@ -82,6 +125,7 @@ runs:
           "${{ inputs.sdk }}"
 
     # 无 .xcarchive 时跳过；导出失败仅输出 warning，不中断 workflow。
+    # SIGNING_ENABLED=1 时使用 EXPORT_METHOD/TEAM_ID/PROFILE_NAME 手动签名导出。
     - name: Export archive if present
       shell: bash
       run: |
@@ -93,4 +137,13 @@ runs:
       with:
         name: ${{ inputs.artifact_name }}
         path: ${{ inputs.artifact_path }}
+        if-no-files-found: warn
+
+    # 签名 IPA 单独上传（distribution != none 时），与未签名 .app 产物互不干扰
+    - name: Upload signed IPA
+      if: ${{ inputs.distribution != 'none' }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ inputs.artifact_name }}-signed-ipa
+        path: build/Exported/*.ipa
         if-no-files-found: warn
