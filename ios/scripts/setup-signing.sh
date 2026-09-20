@@ -31,6 +31,10 @@
 # =============================================================================
 set -euo pipefail
 
+# 版本标记（定位 self-hosted runner action 缓存/tart 镜像内旧脚本问题用，
+# 每次改动 Team 提取逻辑后更新此串；确认线上跑的是新版后可随时移除）
+echo "[macrunara] setup-signing.sh rev=2026-09-20-ou-debug"
+
 P12_B64="${1:-}"
 P12_PASSWORD="${2:-}"
 PROFILE_B64="${3:-}"
@@ -152,14 +156,23 @@ fi
 # 优先取 OU，取不到再回退 CN 括号
 CERT_PEM="$SIGN_DIR/identity.pem"
 CERT_TEAM=""
+CERT_SUBJ=""
 if security find-certificate -c "$SIGN_IDENTITY" -p "$KEYCHAIN_PATH" > "$CERT_PEM" 2>/dev/null && [ -s "$CERT_PEM" ]; then
-  CERT_TEAM=$(openssl x509 -in "$CERT_PEM" -noout -subject -nameopt RFC2253 2>/dev/null | sed -nE 's/.*OU=([A-Z0-9]+).*/\1/' || true)
+  CERT_SUBJ="$(openssl x509 -in "$CERT_PEM" -noout -subject -nameopt RFC2253 2>&1 || true)"
+  CERT_TEAM=$(printf '%s' "$CERT_SUBJ" | sed -nE 's/.*OU=([A-Z0-9]+).*/\1/' || true)
+  # 兼容 oneline 旧格式（/OU=XXX/）与空格变体（OU = XXX）
+  [ -z "$CERT_TEAM" ] && CERT_TEAM=$(printf '%s' "$CERT_SUBJ" | sed -nE 's|.*OU ?= ?([A-Z0-9]+).*|\1|' || true)
+else
+  CERT_SUBJ="<security find-certificate 无输出>"
 fi
+echo "[macrunara] 证书 subject: ${CERT_SUBJ:-<openssl 提取失败>}"
 [ -z "$CERT_TEAM" ] && CERT_TEAM="$(printf '%s' "$IDENTITY_LINE" | sed -nE 's/.*\(([A-Z0-9]+)\).*/\1/p')"
+echo "[macrunara] CERT_TEAM=${CERT_TEAM:-<空>}（OU 优先，取空才用 CN 括号兜底）"
 
 # 描述文件 Team（application-identifier 形如 TEAMID.com.example.app）
 APP_ID="$(extract_plist_string "application-identifier")"
 PROFILE_TEAM="${APP_ID%%.*}"
+echo "[macrunara] PROFILE_TEAM=${PROFILE_TEAM:-<空>} APP_ID=${APP_ID:-<空>}"
 
 # 9-18 真机暴露：证书与描述文件分属不同 Team 时 xcodebuild 才报匹配失败，
 # 在这里提前拦截并给出可操作提示
