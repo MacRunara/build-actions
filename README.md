@@ -64,6 +64,7 @@ Macrunara Mac CI 集群（Apple Silicon M4）的**四技术栈构建动作**集�
   `base64 -i signing.p12 | pbcopy`、`base64 -i profile.mobileprovision | pbcopy`（单行 base64）
 - 安全：证书/密码全程 `::add-mask::` 脱敏；keychain 为一次性临时文件，随 VM 销毁
 - Flutter / React-Native 的 iOS 签名已复用本链路（见对应小节）
+- 📖 完整配置指南（证书导出 / 免费 Apple ID 限制 / FAQ）：[docs/iOS签名构建配置指南.md](docs/iOS签名构建配置指南.md)
 
 ### Android
 
@@ -96,6 +97,7 @@ Macrunara Mac CI 集群（Apple Silicon M4）的**四技术栈构建动作**集�
 - secrets 准备：`base64 -i my.keystore | pbcopy`（单行 base64，Windows 用 `certutil -encode` 后去头尾行）
 - keystore 解码到 `$RUNNER_TEMP`（0600 权限），随 VM 销毁；密码不落任何文件，经环境变量传入
 - 只覆盖 release 系 buildType；debug 构建不受影响，四件材料缺一即报错（::error::）
+- 📖 完整配置指南（keystore 生成 / 多 module·flavor / FAQ）：[docs/Android签名构建配置指南.md](docs/Android签名构建配置指南.md)
 
 ### Flutter
 
