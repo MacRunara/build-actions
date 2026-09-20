@@ -124,13 +124,18 @@ security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD"
 
 # --- WWDR 中间证书（9-18 真机暴露）：临时 keychain 是全新的，没有 Apple WWDR
 # 中间证书时证书链建不起来，find-identity 会报 0 valid identities。
-# 默认从 apple.com 下载 G3（覆盖 Xcode 11+ 签发的所有开发/分发证书）；
-# 无外网环境可用 MACRUNARA_WWDR_CERT 指定本地 .cer 文件。
+# 获取顺序：MACRUNARA_WWDR_CERT 指定的本地文件 > 仓库内置 G3 证书
+# （ios/certs/AppleWWDRCAG3.cer，有效期至 2030-02）> 从 apple.com 下载。
+# 内置兜底的原因（9-20 真机暴露）：内网代理白名单只放行 GitHub 系域名，
+# apple.com 不可达会导致证书链失效。
 WWDR_CERT="$SIGN_DIR/AppleWWDRCAG3.cer"
+BUNDLED_WWDR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/certs/AppleWWDRCAG3.cer"
 if [ -n "${MACRUNARA_WWDR_CERT:-}" ]; then
   cp "${MACRUNARA_WWDR_CERT}" "$WWDR_CERT"
+elif [ -f "$BUNDLED_WWDR" ]; then
+  cp "$BUNDLED_WWDR" "$WWDR_CERT"
 elif ! curl -fsSL --max-time 20 -o "$WWDR_CERT" "https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer" 2>/dev/null; then
-  echo "::warning::WWDR 中间证书下载失败（可用 MACRUNARA_WWDR_CERT 指定本地 .cer），继续尝试"
+  echo "::warning::WWDR 中间证书获取失败（内置缺失且下载失败，可用 MACRUNARA_WWDR_CERT 指定本地 .cer），继续尝试"
 fi
 if [ -f "$WWDR_CERT" ]; then
   security add-certificates -k "$KEYCHAIN_PATH" "$WWDR_CERT" || true
