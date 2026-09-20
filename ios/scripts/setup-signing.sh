@@ -31,10 +31,6 @@
 # =============================================================================
 set -euo pipefail
 
-# 版本标记（定位 self-hosted runner action 缓存/tart 镜像内旧脚本问题用，
-# 每次改动 Team 提取逻辑后更新此串；确认线上跑的是新版后可随时移除）
-echo "[macrunara] setup-signing.sh rev=2026-09-20-ou-fix"
-
 P12_B64="${1:-}"
 P12_PASSWORD="${2:-}"
 PROFILE_B64="${3:-}"
