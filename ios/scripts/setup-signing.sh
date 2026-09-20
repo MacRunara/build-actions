@@ -33,7 +33,7 @@ set -euo pipefail
 
 # 版本标记（定位 self-hosted runner action 缓存/tart 镜像内旧脚本问题用，
 # 每次改动 Team 提取逻辑后更新此串；确认线上跑的是新版后可随时移除）
-echo "[macrunara] setup-signing.sh rev=2026-09-20-ou-debug"
+echo "[macrunara] setup-signing.sh rev=2026-09-20-ou-fix"
 
 P12_B64="${1:-}"
 P12_PASSWORD="${2:-}"
@@ -159,9 +159,9 @@ CERT_TEAM=""
 CERT_SUBJ=""
 if security find-certificate -c "$SIGN_IDENTITY" -p "$KEYCHAIN_PATH" > "$CERT_PEM" 2>/dev/null && [ -s "$CERT_PEM" ]; then
   CERT_SUBJ="$(openssl x509 -in "$CERT_PEM" -noout -subject -nameopt RFC2253 2>&1 || true)"
-  CERT_TEAM=$(printf '%s' "$CERT_SUBJ" | sed -nE 's/.*OU=([A-Z0-9]+).*/\1/' || true)
+  CERT_TEAM=$(printf '%s' "$CERT_SUBJ" | sed -nE 's/.*OU=([A-Z0-9]+).*/\1/p' || true)
   # 兼容 oneline 旧格式（/OU=XXX/）与空格变体（OU = XXX）
-  [ -z "$CERT_TEAM" ] && CERT_TEAM=$(printf '%s' "$CERT_SUBJ" | sed -nE 's|.*OU ?= ?([A-Z0-9]+).*|\1|' || true)
+  [ -z "$CERT_TEAM" ] && CERT_TEAM=$(printf '%s' "$CERT_SUBJ" | sed -nE 's|.*OU ?= ?([A-Z0-9]+).*|\1|p' || true)
 else
   CERT_SUBJ="<security find-certificate 无输出>"
 fi

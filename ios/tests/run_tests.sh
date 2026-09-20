@@ -244,7 +244,7 @@ cat > "$WORK/mock-bin/security" <<'MOCK'
 #!/usr/bin/env bash
 echo "$@" >> "$MOCK_SECURITY_LOG"
 case "$1" in
-  find-identity) echo '  1) 0123456789ABCDEF0123456789ABCDEF01234567 "iPhone Distribution: Mock Team (TEAM123)"' ;;
+  find-identity) echo '  1) 0123456789ABCDEF0123456789ABCDEF01234567 "Apple Development: mock@example.com (PERSON99)"' ;;
   find-certificate) cat "$MOCK_CERT_PEM" ;;
   cms) cat "$MOCK_PROFILE_PLIST" ;;
   list-keychains) echo "$HOME/Library/Keychains/login.keychain-db" ;;
@@ -287,7 +287,7 @@ rc=$?
 assert_eq "用例10: setup-signing 退出码为 0" "0" "$rc"
 assert_contains "用例10: signing.env 启用签名" "$CASE/signing.env" "SIGNING_ENABLED=1"
 assert_contains "用例10: 推导 TEAM_ID" "$CASE/signing.env" "TEAM_ID=TEAM123"
-assert_not_contains "用例10: CN 括号个人ID 不得当作 Team（Personal Team 回归）" "$CASE/signing.env" "PERSON99"
+assert_not_contains "用例10: CN 括号个人ID 不得当作 Team（Personal Team 回归）" "$CASE/signing.env" "TEAM_ID=PERSON99"
 assert_contains "用例10: 解析 PROFILE_UUID" "$CASE/signing.env" "PROFILE_UUID=UUID-1234-ABCD"
 assert_contains "用例10: 解析 PROFILE_NAME" "$CASE/signing.env" "PROFILE_NAME=MockProfile"
 assert_contains "用例10: local 映射 ad-hoc" "$CASE/signing.env" "EXPORT_METHOD=ad-hoc"
