@@ -141,7 +141,21 @@ fi
 # 不过滤会把这行当成身份名带进 CODE_SIGN_IDENTITY（9-18 真机暴露）
 IDENTITY_LINE="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep '"' | head -1 || true)"
 SIGN_IDENTITY="$(printf '%s' "$IDENTITY_LINE" | sed -E 's/.*"([^"]+)".*/\1/')"
-CERT_TEAM="$(printf '%s' "$IDENTITY_LINE" | sed -nE 's/.*\(([A-Z0-9]+)\).*/\1/p')"
+if [ -z "$SIGN_IDENTITY" ]; then
+  echo "::error::keychain 内无有效签名身份（0 valid identities）——p12 私钥/证书不匹配，或证书链无效（WWDR 缺失）"
+  exit 1
+fi
+
+# Team ID 提取（9-20 真机暴露）：企业证书 CN 括号即 Team ID，但 Personal Team
+# 证书 CN 括号是个人 ID、OU 字段才是真 Team ID（subject 形如
+# C=US,O=姓名,OU=UXAPAYMP76,CN=Apple Development: xxx (4T3477P8FT)）。
+# 优先取 OU，取不到再回退 CN 括号
+CERT_PEM="$SIGN_DIR/identity.pem"
+CERT_TEAM=""
+if security find-certificate -c "$SIGN_IDENTITY" -p "$KEYCHAIN_PATH" > "$CERT_PEM" 2>/dev/null && [ -s "$CERT_PEM" ]; then
+  CERT_TEAM=$(openssl x509 -in "$CERT_PEM" -noout -subject -nameopt RFC2253 2>/dev/null | sed -nE 's/.*OU=([A-Z0-9]+).*/\1/' || true)
+fi
+[ -z "$CERT_TEAM" ] && CERT_TEAM="$(printf '%s' "$IDENTITY_LINE" | sed -nE 's/.*\(([A-Z0-9]+)\).*/\1/p')"
 
 # 描述文件 Team（application-identifier 形如 TEAMID.com.example.app）
 APP_ID="$(extract_plist_string "application-identifier")"
@@ -154,10 +168,6 @@ if [ -n "$CERT_TEAM" ] && [ -n "$PROFILE_TEAM" ] && [ "$CERT_TEAM" != "$PROFILE_
   exit 1
 fi
 TEAM_ID="${CERT_TEAM:-$PROFILE_TEAM}"
-if [ -z "$SIGN_IDENTITY" ]; then
-  echo "::error::keychain 内无有效签名身份（0 valid identities）——p12 私钥/证书不匹配，或证书链无效（WWDR 缺失）"
-  exit 1
-fi
 if [ -z "$TEAM_ID" ]; then
   echo "::error::未能推导 Team ID，请确认描述文件含 application-identifier"
   exit 1
