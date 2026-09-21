@@ -126,11 +126,11 @@ echo "$@ | GRADLE_OPTS=${GRADLE_OPTS:-}" >> "$MOCK_LOG"
 MOCK
 chmod +x gradlew
 
-https_proxy=http://172.16.0.81:7890 bash "$BUILD_SH" "assembleDebug" "app" >out.log 2>&1
+https_proxy=http://192.0.2.1:7890 bash "$BUILD_SH" "assembleDebug" "app" >out.log 2>&1
 rc=$?
 assert_eq "用例5: 退出码为 0" "0" "$rc"
-assert_contains "用例5: GRADLE_OPTS 注入 http 代理" "$MOCK_LOG" "-Dhttp.proxyHost=172.16.0.81 -Dhttp.proxyPort=7890"
-assert_contains "用例5: GRADLE_OPTS 注入 https 代理" "$MOCK_LOG" "-Dhttps.proxyHost=172.16.0.81 -Dhttps.proxyPort=7890"
+assert_contains "用例5: GRADLE_OPTS 注入 http 代理" "$MOCK_LOG" "-Dhttp.proxyHost=192.0.2.1 -Dhttp.proxyPort=7890"
+assert_contains "用例5: GRADLE_OPTS 注入 https 代理" "$MOCK_LOG" "-Dhttps.proxyHost=192.0.2.1 -Dhttps.proxyPort=7890"
 
 # =============================================================================
 # 用例 6：存在 JDK 17 时 JAVA_HOME 钉到 LTS（AGP JdkImageTransform 与 Java 26 不兼容）

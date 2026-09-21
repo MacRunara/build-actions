@@ -159,11 +159,11 @@ CASE="$WORK/case6"; mkdir -p "$CASE"; cd "$CASE"
 export MOCK_LOG="$CASE/mock.log"
 export PATH="$WORK/mock-bin:$PATH"
 
-https_proxy=http://172.16.0.81:7890 bash "$BUILD_SH" android release false >out.log 2>&1
+https_proxy=http://192.0.2.1:7890 bash "$BUILD_SH" android release false >out.log 2>&1
 rc=$?
 assert_eq "用例6: 退出码为 0" "0" "$rc"
-assert_contains "用例6: GRADLE_OPTS 注入 http 代理" "$MOCK_LOG" "-Dhttp.proxyHost=172.16.0.81 -Dhttp.proxyPort=7890"
-assert_contains "用例6: GRADLE_OPTS 注入 https 代理" "$MOCK_LOG" "-Dhttps.proxyHost=172.16.0.81 -Dhttps.proxyPort=7890"
+assert_contains "用例6: GRADLE_OPTS 注入 http 代理" "$MOCK_LOG" "-Dhttp.proxyHost=192.0.2.1 -Dhttp.proxyPort=7890"
+assert_contains "用例6: GRADLE_OPTS 注入 https 代理" "$MOCK_LOG" "-Dhttps.proxyHost=192.0.2.1 -Dhttps.proxyPort=7890"
 assert_contains "用例6: 仍执行 apk release 构建" "$MOCK_LOG" "flutter build apk --release"
 
 # =============================================================================
