@@ -22,7 +22,7 @@
 # =============================================================================
 set -euo pipefail
 
-echo "[macrunara] rn build.sh rev=2026-09-22-npm-verify"
+echo "[macrunara] rn build.sh rev=2026-09-22-npm-replace-registry-host"
 echo "[macrunara] node=$(node --version 2>&1) npm=$(npm --version 2>&1)"
 echo "[macrunara] proxy env: http_proxy=${http_proxy:-<unset>} https_proxy=${https_proxy:-<unset>}"
 
@@ -53,6 +53,13 @@ export npm_config_fetch_retries="${npm_config_fetch_retries:-5}"
 export npm_config_fetch_retry_mintimeout="${npm_config_fetch_retry_mintimeout:-10000}"
 export npm_config_fetch_retry_maxtimeout="${npm_config_fetch_retry_maxtimeout:-60000}"
 echo "[macrunara] maxsockets=$npm_config_maxsockets fetch_retries=$npm_config_fetch_retries"
+
+# 客户项目的 package-lock.json 可能写死了国内镜像源（如 registry.npmmirror.com），
+# 这些域名不在出口白名单内会被 403。强制 npm 用 registry.npmjs.org 替换
+# lock 文件里的镜像主机（npm >= 10.4 支持 replace-registry-host）。
+export npm_config_replace_registry_host="${npm_config_replace_registry_host:-always}"
+export npm_config_registry="${npm_config_registry:-https://registry.npmjs.org/}"
+echo "[macrunara] registry=$npm_config_registry replace_registry_host=$npm_config_replace_registry_host"
 
 # --- JS 依赖 ------------------------------------------------------------------
 dump_npm_debug_log() {
