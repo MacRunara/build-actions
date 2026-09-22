@@ -60,6 +60,10 @@ setup_gradle_jdk() {
 }
 setup_gradle_jdk
 
+# maven 中央仓/插件门户镜像注入（出口带宽治理）：flutter build apk 走 Gradle，
+# 默认 aliyun 镜像直连不出境；外层设 MACRUNARA_MAVEN_MIRROR=off 关闭。
+bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/setup-maven-mirrors.sh"
+
 # 出口带宽治理（2026-09-22）：舰队在国内、香港出口带宽是瓶颈，
 # 默认切 Flutter 国内镜像直连（不过代理，流量不出境）。
 # 海外自建 runner 客户可设 MACRUNARA_PUB_MIRROR=official 改回 pub.dev。

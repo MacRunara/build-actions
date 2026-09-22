@@ -45,6 +45,9 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# build.sh 会向 ~/.gradle/init.d 注入 maven 镜像脚本，统一重定向到 WORK 内
+export GRADLE_USER_HOME="$WORK/global-gradle-home"
+
 mkdir -p "$WORK/mock-bin"
 cat > "$WORK/mock-bin/flutter" <<'MOCK'
 #!/usr/bin/env bash
@@ -306,6 +309,39 @@ else
   fail "用例12: 缺少 warning（实际输出: $out）"
 fi
 assert_contains "用例12: 实际按 release 编译" "$MOCK_LOG" "flutter build ios --release --no-codesign"
+
+# =============================================================================
+# 用例 13：默认注入 maven 镜像 init.d 脚本（flutter build apk 走 Gradle）
+# =============================================================================
+CASE="$WORK/case13"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$WORK/mock-bin:$PATH"
+export GRADLE_USER_HOME="$CASE/gradle-home"
+
+bash "$BUILD_SH" "android" "debug" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例13: 退出码为 0" "0" "$rc"
+assert_file_exists "用例13: init.d 镜像脚本生成" "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle"
+assert_contains "用例13: 含 aliyun gradle-plugin 镜像" "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle" "https://maven.aliyun.com/repository/gradle-plugin"
+assert_contains "用例13: 覆盖插件门户（settingsEvaluated）" "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle" "gradle.settingsEvaluated"
+assert_contains "用例13: 日志提示镜像注入" "out.log" "maven mirrors -> aliyun"
+assert_contains "用例13: 仍执行 flutter build apk" "$MOCK_LOG" "flutter build apk --debug"
+unset GRADLE_USER_HOME
+
+# =============================================================================
+# 用例 14：MACRUNARA_MAVEN_MIRROR=off → 不生成 init.d 镜像脚本
+# =============================================================================
+CASE="$WORK/case14"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$WORK/mock-bin:$PATH"
+export GRADLE_USER_HOME="$CASE/gradle-home"
+
+MACRUNARA_MAVEN_MIRROR=off bash "$BUILD_SH" "android" "debug" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例14: 退出码为 0" "0" "$rc"
+assert_eq "用例14: 不生成 init 脚本" "0" "$([ -f "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle" ] && echo 1 || echo 0)"
+assert_contains "用例14: 日志提示已关闭" "out.log" "maven mirrors disabled"
+unset GRADLE_USER_HOME
 
 # --- 汇总 ---------------------------------------------------------------------
 echo ""

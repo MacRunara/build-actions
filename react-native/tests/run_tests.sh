@@ -42,6 +42,9 @@ fi
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# build.sh 会向 ~/.gradle/init.d 注入 maven 镜像脚本，统一重定向到 WORK 内
+export GRADLE_USER_HOME="$WORK/global-gradle-home"
+
 # --- mock 工具集 ----------------------------------------------------------------
 MOCKBIN="$WORK/mock-bin"; mkdir -p "$MOCKBIN"
 
@@ -251,6 +254,49 @@ assert_contains "用例8: 模拟器目标构建" "$MOCK_LOG" "generic/platform=i
 assert_not_contains "用例8: 不执行 archive" "$MOCK_LOG" "xcodebuild archive"
 assert_not_contains "用例8: 不执行 -exportArchive" "$MOCK_LOG" "-exportArchive"
 assert_not_contains "用例8: 不生成 exportOptions.plist" "exportOptions.plist" "<plist"
+
+# =============================================================================
+# 用例 9：android-task 非空时默认注入 maven 镜像 init.d 脚本
+# =============================================================================
+CASE="$WORK/case9"; mkdir -p "$CASE/android"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+export GRADLE_USER_HOME="$CASE/gradle-home"
+cat > android/gradlew <<'MOCK'
+#!/usr/bin/env bash
+echo "gradlew $@" >> "$MOCK_LOG"
+MOCK
+chmod +x android/gradlew
+
+bash "$BUILD_SH" "npm" "" "" "assembleDebug" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例9: 退出码为 0" "0" "$rc"
+assert_file_exists "用例9: init.d 镜像脚本生成" "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle"
+assert_contains "用例9: 含 aliyun gradle-plugin 镜像" "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle" "https://maven.aliyun.com/repository/gradle-plugin"
+assert_contains "用例9: 覆盖插件门户（settingsEvaluated）" "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle" "gradle.settingsEvaluated"
+assert_contains "用例9: 日志提示镜像注入" "out.log" "maven mirrors -> aliyun"
+assert_contains "用例9: 仍执行 gradlew assembleDebug" "$MOCK_LOG" "gradlew assembleDebug --no-daemon"
+unset GRADLE_USER_HOME
+
+# =============================================================================
+# 用例 10：MACRUNARA_MAVEN_MIRROR=off → 不生成 init.d 镜像脚本
+# =============================================================================
+CASE="$WORK/case10"; mkdir -p "$CASE/android"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+export PATH="$MOCKBIN:$PATH"
+export GRADLE_USER_HOME="$CASE/gradle-home"
+cat > android/gradlew <<'MOCK'
+#!/usr/bin/env bash
+echo "gradlew $@" >> "$MOCK_LOG"
+MOCK
+chmod +x android/gradlew
+
+MACRUNARA_MAVEN_MIRROR=off bash "$BUILD_SH" "npm" "" "" "assembleDebug" "false" >out.log 2>&1
+rc=$?
+assert_eq "用例10: 退出码为 0" "0" "$rc"
+assert_eq "用例10: 不生成 init 脚本" "0" "$([ -f "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle" ] && echo 1 || echo 0)"
+assert_contains "用例10: 日志提示已关闭" "out.log" "maven mirrors disabled"
+unset GRADLE_USER_HOME
 
 # --- 汇总 ---------------------------------------------------------------------
 echo ""

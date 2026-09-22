@@ -179,6 +179,9 @@ if [ -n "$ANDROID_TASK" ]; then
       fi
     done
   fi
+  # maven 中央仓/插件门户镜像注入（出口带宽治理）：默认 aliyun 镜像直连
+  # 不出境；外层设 MACRUNARA_MAVEN_MIRROR=off 关闭。
+  bash "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/setup-maven-mirrors.sh"
   (cd android && chmod +x gradlew && ./gradlew "$ANDROID_TASK" --no-daemon)
 fi
 
