@@ -22,9 +22,8 @@
 # =============================================================================
 set -euo pipefail
 
-echo "[macrunara] rn build.sh rev=2026-09-22-npm-throttle"
+echo "[macrunara] rn build.sh rev=2026-09-22-npm-verify"
 echo "[macrunara] node=$(node --version 2>&1) npm=$(npm --version 2>&1)"
-echo "[macrunara] maxsockets=${npm_config_maxsockets:-<unset>} fetch_retries=${npm_config_fetch_retries:-<unset>}"
 echo "[macrunara] proxy env: http_proxy=${http_proxy:-<unset>} https_proxy=${https_proxy:-<unset>}"
 
 PM="${1:?usage: build.sh <package-manager> <ios-workspace> <ios-scheme> <android-task> <run-tests>}"
@@ -53,13 +52,25 @@ export npm_config_maxsockets="${npm_config_maxsockets:-5}"
 export npm_config_fetch_retries="${npm_config_fetch_retries:-5}"
 export npm_config_fetch_retry_mintimeout="${npm_config_fetch_retry_mintimeout:-10000}"
 export npm_config_fetch_retry_maxtimeout="${npm_config_fetch_retry_maxtimeout:-60000}"
+echo "[macrunara] maxsockets=$npm_config_maxsockets fetch_retries=$npm_config_fetch_retries"
 
 # --- JS 依赖 ------------------------------------------------------------------
+dump_npm_debug_log() {
+  echo "::error::npm ci 异常，转储 npm debug 日志末尾："
+  ls -t "$npm_config_cache"/_logs/*-debug-0.log 2>/dev/null | head -1 | xargs tail -60 || true
+}
+
 case "$PM" in
   npm)
-    if ! npm ci; then
-      echo "::error::npm ci failed, dumping npm debug log tail:"
-      ls -t "$npm_config_cache"/_logs/*-debug-0.log 2>/dev/null | head -1 | xargs tail -60 || true
+    npm config get proxy https-proxy maxsockets registry 2>/dev/null || true
+    set +e
+    npm ci --no-audit --no-fund 2>&1 | tee "${RUNNER_TEMP:-/tmp}/npm-ci.log"
+    npm_rc=${PIPESTATUS[0]}
+    set -e
+    # npm 10.x 已知 bug："Exit handler never called" 时可能 exit 0 但并未安装依赖。
+    # 因此校验结果而非退出码：报错关键字或 node_modules 缺失都视为失败。
+    if [ "$npm_rc" -ne 0 ] || grep -q 'npm error' "${RUNNER_TEMP:-/tmp}/npm-ci.log" || [ ! -d node_modules ]; then
+      dump_npm_debug_log
       exit 1
     fi
     ;;
