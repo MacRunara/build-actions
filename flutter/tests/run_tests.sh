@@ -323,7 +323,7 @@ rc=$?
 assert_eq "用例13: 退出码为 0" "0" "$rc"
 assert_file_exists "用例13: init.d 镜像脚本生成" "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle"
 assert_contains "用例13: 含 aliyun gradle-plugin 镜像" "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle" "https://maven.aliyun.com/repository/gradle-plugin"
-assert_contains "用例13: 覆盖插件门户（settingsEvaluated）" "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle" "gradle.settingsEvaluated"
+assert_contains "用例13: 覆盖插件门户（beforeSettings，求值前注入）" "$CASE/gradle-home/init.d/macrunara-maven-mirrors.gradle" "gradle.beforeSettings"
 assert_contains "用例13: 日志提示镜像注入" "out.log" "maven mirrors -> aliyun"
 assert_contains "用例13: 仍执行 flutter build apk" "$MOCK_LOG" "flutter build apk --debug"
 unset GRADLE_USER_HOME

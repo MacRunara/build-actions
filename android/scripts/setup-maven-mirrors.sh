@@ -71,10 +71,15 @@ macrunaraRedirectCentral = { repos ->
   }
 }
 
-// settings：插件解析（plugins.gradle.org）与 dependencyResolutionManagement
-gradle.settingsEvaluated { s ->
+// settings 的 plugins{} 块在 settings 脚本求值【期间】解析插件 classpath，
+// settingsEvaluated 钩子太晚（求值后才触发）——必须用 beforeSettings。
+gradle.beforeSettings { s ->
   macrunaraPrependMirrors(s.pluginManagement.repositories)
   macrunaraRedirectCentral(s.pluginManagement.repositories)
+}
+
+// dependencyResolutionManagement 在 settings 求值后才消费，settingsEvaluated 即可
+gradle.settingsEvaluated { s ->
   try {
     macrunaraPrependMirrors(s.dependencyResolutionManagement.repositories)
     macrunaraRedirectCentral(s.dependencyResolutionManagement.repositories)
