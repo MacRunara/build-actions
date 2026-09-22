@@ -233,7 +233,15 @@ export MOCK_LOG="$CASE/mock.log"
 env -u MACRUNARA_PUB_MIRROR -u PUB_HOSTED_URL bash "$BUILD_SH" android release false >out.log 2>&1
 rc=$?
 assert_eq "用例10b: 退出码为 0" "0" "$rc"
-assert_not_contains "用例10b: 默认不切镜像" "$MOCK_LOG" "PUB_HOSTED_URL=https://pub.flutter-io.cn"
+assert_contains "用例10b: 默认即切国内镜像（2026-09-22 带宽治理）" "$MOCK_LOG" "PUB_HOSTED_URL=https://pub.flutter-io.cn"
+
+CASE="$WORK/case10c"; mkdir -p "$CASE"; cd "$CASE"
+export MOCK_LOG="$CASE/mock.log"
+
+env -u PUB_HOSTED_URL MACRUNARA_PUB_MIRROR=official bash "$BUILD_SH" android release false >out.log 2>&1
+rc=$?
+assert_eq "用例10c: 退出码为 0" "0" "$rc"
+assert_not_contains "用例10c: official 显式退出镜像" "$MOCK_LOG" "PUB_HOSTED_URL=https://pub.flutter-io.cn"
 
 # =============================================================================
 # 用例 11：SIGNING_ENABLED=1 时走「flutter build ios --no-codesign → 手动签名
