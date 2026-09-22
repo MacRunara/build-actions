@@ -22,6 +22,11 @@
 # =============================================================================
 set -euo pipefail
 
+echo "[macrunara] rn build.sh rev=2026-09-22-npm-throttle"
+echo "[macrunara] node=$(node --version 2>&1) npm=$(npm --version 2>&1)"
+echo "[macrunara] maxsockets=${npm_config_maxsockets:-<unset>} fetch_retries=${npm_config_fetch_retries:-<unset>}"
+echo "[macrunara] proxy env: http_proxy=${http_proxy:-<unset>} https_proxy=${https_proxy:-<unset>}"
+
 PM="${1:?usage: build.sh <package-manager> <ios-workspace> <ios-scheme> <android-task> <run-tests>}"
 IOS_WORKSPACE="${2:-}"
 IOS_SCHEME="${3:-}"
@@ -52,7 +57,11 @@ export npm_config_fetch_retry_maxtimeout="${npm_config_fetch_retry_maxtimeout:-6
 # --- JS 依赖 ------------------------------------------------------------------
 case "$PM" in
   npm)
-    npm ci
+    if ! npm ci; then
+      echo "::error::npm ci failed, dumping npm debug log tail:"
+      ls -t "$npm_config_cache"/_logs/*-debug-0.log 2>/dev/null | head -1 | xargs tail -60 || true
+      exit 1
+    fi
     ;;
   yarn)
     yarn install --frozen-lockfile
