@@ -48,6 +48,8 @@ MOCKBIN="$WORK/mock-bin"; mkdir -p "$MOCKBIN"
 cat > "$MOCKBIN/npm" <<'MOCK'
 #!/usr/bin/env bash
 echo "npm $@" >> "$MOCK_LOG"
+# build.sh 现在校验 npm ci 的结果（node_modules 必须存在），mock 需模拟安装成功
+case " $* " in *" ci "*) mkdir -p node_modules && touch node_modules/.mock-installed;; esac
 MOCK
 
 cat > "$MOCKBIN/yarn" <<'MOCK'
