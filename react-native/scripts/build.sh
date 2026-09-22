@@ -41,6 +41,14 @@ export ANDROID_HOME="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
 export npm_config_cache="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/npm-cache"
 mkdir -p "$npm_config_cache"
 
+# 代理链路（squid → 隧道）下 npm 默认的高并发 socket 容易触发连接重置，
+# 导致 npm 自身崩溃（Exit handler never called）。限并发 + 重试兜底。
+# 客户如需调整可在 workflow env 覆盖同名变量。
+export npm_config_maxsockets="${npm_config_maxsockets:-5}"
+export npm_config_fetch_retries="${npm_config_fetch_retries:-5}"
+export npm_config_fetch_retry_mintimeout="${npm_config_fetch_retry_mintimeout:-10000}"
+export npm_config_fetch_retry_maxtimeout="${npm_config_fetch_retry_maxtimeout:-60000}"
+
 # --- JS 依赖 ------------------------------------------------------------------
 case "$PM" in
   npm)
