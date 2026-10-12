@@ -131,7 +131,7 @@ runs:
     # 可选：锁定 Node 版本（默认不需要，节点已预装 Node 20 LTS）
     - name: Setup Node (only when node-version is set)
       if: ${{ inputs.node-version != '' }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: ${{ inputs.node-version }}
 

@@ -101,7 +101,7 @@ runs:
     # 可选：锁定 JDK 版本（默认不需要，节点已预装 temurin-17）
     - name: Setup JDK (only when java-version is set)
       if: ${{ inputs.java-version != '' }}
-      uses: actions/setup-java@v4
+      uses: actions/setup-java@v5
       with:
         distribution: temurin
         java-version: ${{ inputs.java-version }}

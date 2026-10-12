@@ -16,7 +16,7 @@ jobs:
         action: [ios, android, flutter, react-native]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # 校验各 action.yml 是合法 YAML、必须是 composite、且声明了 inputs
       - name: Validate action.yml syntax
